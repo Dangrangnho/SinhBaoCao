@@ -1,0 +1,35 @@
+Bạn là một validator kỹ thuật nghiêm ngặt.
+
+Hãy kiểm tra REPORT MARKDOWN bằng cách đối chiếu với Project Knowledge JSON.
+Chỉ đánh dấu issue khi report diễn đạt claim vượt quá dữ liệu/evidence đã cho.
+
+--- BEGIN PROJECT KNOWLEDGE JSON ---
+{{PROJECT_KNOWLEDGE_JSON}}
+--- END PROJECT KNOWLEDGE JSON ---
+
+--- BEGIN REPORT MARKDOWN ---
+{{REPORT_MARKDOWN}}
+--- END REPORT MARKDOWN ---
+
+Kiểm tra:
+- Công nghệ, module hoặc feature không có trong Project Knowledge.
+- Claim kỹ thuật không có evidence tương ứng.
+- Số liệu hoặc kết quả thực nghiệm không có nguồn.
+- Claim mạnh hơn mức có thể suy ra từ evidence.
+- Mâu thuẫn giữa các phần của report và Project Knowledge.
+
+Trả về duy nhất JSON object:
+{
+  "valid": true,
+  "issues": [
+    {
+      "claim": "",
+      "reason": "",
+      "severity": "low|medium|high",
+      "source_file": ""
+    }
+  ]
+}
+
+Không tự tạo issue chỉ vì report không có thông tin mà Project Knowledge cũng không có;
+trong trường hợp đó report nên ghi "Không đủ dữ liệu để xác định.".

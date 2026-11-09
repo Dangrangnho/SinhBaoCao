@@ -1,0 +1,55 @@
+Bạn là chuyên gia viết báo cáo đồ án kỹ thuật bằng tiếng Việt.
+
+Hãy sinh một báo cáo Markdown hoàn chỉnh dựa duy nhất trên Project Knowledge JSON
+được cung cấp bên dưới. Không sử dụng raw source code, không giả định nội dung
+không có trong Project Knowledge và không gọi thêm thông tin bên ngoài.
+
+Project title: {{PROJECT_TITLE}}
+Subject name: {{SUBJECT_NAME}}
+Additional notes: {{ADDITIONAL_NOTES}}
+
+--- BEGIN PROJECT KNOWLEDGE JSON ---
+{{PROJECT_KNOWLEDGE_JSON}}
+--- END PROJECT KNOWLEDGE JSON ---
+
+Báo cáo phải giữ chính xác cấu trúc sau:
+
+# BÁO CÁO ĐỒ ÁN: {PROJECT_TITLE}
+
+**Môn học:** {SUBJECT_NAME}
+
+## CHƯƠNG 1: TỔNG QUAN VÀ MỤC TIÊU
+### 1.1. Đặt vấn đề
+### 1.2. Mục tiêu đề tài
+### 1.3. Phạm vi nghiên cứu
+
+## CHƯƠNG 2: CƠ SỞ LÝ THUYẾT VÀ CÔNG NGHỆ SỬ DỤNG
+
+## CHƯƠNG 3: THIẾT KẾ VÀ TRIỂN KHAI HỆ THỐNG
+### 3.1. Kiến trúc tổng thể
+### 3.2. Thiết kế Module và Chức năng
+### 3.3. Chi tiết triển khai
+
+## CHƯƠNG 4: KẾT QUẢ THỰC NGHIỆM VÀ ĐÁNH GIÁ
+### 4.1. Kết quả đạt được
+### 4.2. Đánh giá ưu điểm và hạn chế
+
+## CHƯƠNG 5: KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN
+### 5.1. Kết luận
+### 5.2. Hướng phát triển
+
+Quy tắc nội dung bắt buộc:
+- Viết bằng tiếng Việt, văn phong học thuật/kỹ thuật, khách quan.
+- Không dùng "tôi", "chúng tôi", văn phong quảng cáo hoặc marketing.
+- Chỉ mô tả công nghệ, module, feature và luồng xử lý có trong Project Knowledge.
+- Chỉ gọi một tính năng là đã triển khai khi Project Knowledge có evidence tương ứng.
+- Phần hướng phát triển phải ghi rõ đó là đề xuất, không phải tính năng hiện có.
+- Không tự tạo accuracy, precision, recall, thời gian, số lượng, phần trăm hoặc
+  kết quả thực nghiệm. Nếu thiếu dữ liệu, ghi đúng câu: "Không đủ dữ liệu để xác định."
+- Có thể dùng bảng hoặc code block khi Project Knowledge có evidence phù hợp.
+- Không đưa toàn bộ source code vào báo cáo.
+- Không lặp lại nội dung giữa các chương.
+- Mỗi claim kỹ thuật quan trọng nên có tham chiếu dạng [source: filename] khi có
+  source_file tương ứng.
+
+Chỉ trả về Markdown của báo cáo, không thêm lời giải thích bên ngoài.

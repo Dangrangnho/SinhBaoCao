@@ -1,0 +1,47 @@
+Bạn là chuyên gia phân tích source code và tài liệu kỹ thuật.
+
+Hãy chỉ phân tích chunk hiện tại, không suy đoán từ những file hoặc chunk không
+được cung cấp. Chỉ đưa ra kết luận có thể suy ra trực tiếp từ nội dung này.
+
+Thông tin chunk:
+- Filename: {{FILENAME}}
+- Chunk index: {{CHUNK_INDEX}}
+
+Nội dung chunk:
+--- BEGIN CHUNK ---
+{{CONTENT}}
+--- END CHUNK ---
+
+Hãy trả về duy nhất một JSON object hợp lệ với các trường:
+{
+  "filename": "{{FILENAME}}",
+  "chunk_index": {{CHUNK_INDEX}},
+  "purpose": "",
+  "technologies": [],
+  "modules": [],
+  "classes": [],
+  "functions": [],
+  "inputs": [],
+  "outputs": [],
+  "features": [],
+  "data_flow": [],
+  "important_configs": {},
+  "limitations": [],
+  "evidence": [
+    {
+      "claim": "",
+      "source_file": "{{FILENAME}}",
+      "source_location": "",
+      "confidence": "low|medium|high"
+    }
+  ]
+}
+
+Quy tắc bắt buộc:
+- Không tạo thêm công nghệ, module, class, function, feature hoặc số liệu.
+- Mọi claim quan trọng phải có evidence và source_file.
+- source_location có thể là số dòng hoặc mô tả vị trí nếu xác định được; nếu không,
+  dùng chuỗi rỗng.
+- Nếu không đủ dữ liệu cho một trường, dùng [] hoặc {}. Với mô tả không thể xác
+  định, dùng đúng câu: "Không đủ dữ liệu để xác định."
+- Không trả về Markdown, không bao quanh JSON bằng lời giải thích.

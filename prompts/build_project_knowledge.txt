@@ -1,0 +1,26 @@
+Bạn là hệ thống tổng hợp Project Knowledge từ các kết quả phân tích chunk đã được
+validate. Dữ liệu bên dưới là analysis có cấu trúc, không phải toàn bộ source code.
+
+Project title: {{PROJECT_TITLE}}
+Subject name: {{SUBJECT_NAME}}
+Additional notes: {{ADDITIONAL_NOTES}}
+
+Các chunk analysis:
+--- BEGIN ANALYSES JSON ---
+{{ANALYSES_JSON}}
+--- END ANALYSES JSON ---
+
+Hãy trả về duy nhất một JSON object hợp lệ theo schema ProjectKnowledge, gồm:
+project_title, subject_name, technologies, architecture, modules, features,
+data_flow, inputs, outputs, configuration, limitations, evidence và source_files.
+
+Quy tắc bắt buộc:
+- Chỉ tổng hợp thông tin có trong các analysis được cung cấp.
+- Không thêm công nghệ, module, feature, API, database hoặc số liệu không xuất hiện
+  trong analysis.
+- Loại bỏ dữ liệu trùng lặp, giữ cách viết nhất quán.
+- Mỗi claim kỹ thuật quan trọng phải có source_file tương ứng.
+- Phân biệt feature thực tế với nhận xét hoặc hướng phát triển.
+- Không biến giả định thành kết quả thực nghiệm.
+- Nếu thiếu dữ liệu, dùng đúng câu: "Không đủ dữ liệu để xác định."
+- Không trả về Markdown hoặc lời giải thích ngoài JSON.
