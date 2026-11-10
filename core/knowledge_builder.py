@@ -189,7 +189,7 @@ def _apply_evidence_boundary(
     if not features:
         features = _unique_strings(value for analysis in analyses for value in analysis.features)
 
-    modules = _merge_modules(analyses, known_modules)
+    modules = _merge_modules(analyses, known_modules, candidate.modules)
     evidence = _unique_evidence(
         evidence for analysis in analyses for evidence in analysis.evidence
     )
@@ -224,34 +224,54 @@ def _apply_evidence_boundary(
     )
 
 
-def _merge_modules(analyses: Sequence[ChunkAnalysis], known_modules: set[str]) -> list[Module]:
+def _merge_modules(
+    analyses: Sequence[ChunkAnalysis],
+    known_modules: set[str],
+    candidate_modules: Sequence[Module] = (),
+) -> list[Module]:
     """Create modules only from names explicitly found in chunk analyses."""
+    candidate_desc = {
+        mod.name.strip().casefold(): mod.description.strip()
+        for mod in candidate_modules
+        if mod.description.strip()
+    }
     merged: dict[str, Module] = {}
     for analysis in analyses:
+        details_parts: list[str] = []
+        if analysis.purpose and analysis.purpose != NOT_ENOUGH_DATA:
+            details_parts.append(analysis.purpose)
+        if analysis.classes:
+            details_parts.append(f"Classes: {', '.join(analysis.classes)}")
+        if analysis.functions:
+            details_parts.append(f"Functions: {', '.join(analysis.functions)}")
+        chunk_desc = " | ".join(details_parts)
+
         for module_name in analysis.modules:
             key = module_name.casefold()
             if key not in known_modules:
                 continue
             existing = merged.get(key)
-            related_evidence = [
-                evidence
-                for evidence in analysis.evidence
-                if module_name.casefold() in evidence.claim.casefold()
-            ]
+            related_evidence = list(analysis.evidence)
+            base_desc = candidate_desc.get(key, "")
+            combined_desc = (
+                f"{base_desc} ({chunk_desc})"
+                if base_desc and chunk_desc and chunk_desc not in base_desc
+                else (base_desc or chunk_desc)
+            )
             if existing is None:
                 merged[key] = Module(
                     name=module_name,
-                    description=(
-                        analysis.purpose
-                        if analysis.purpose != NOT_ENOUGH_DATA
-                        else ""
-                    ),
+                    description=combined_desc,
                     source_files=[analysis.filename],
                     evidence=related_evidence,
                 )
             else:
+                updated_desc = existing.description
+                if chunk_desc and chunk_desc not in updated_desc:
+                    updated_desc = f"{updated_desc}; {chunk_desc}".strip("; ")
                 merged[key] = existing.model_copy(
                     update={
+                        "description": updated_desc,
                         "source_files": _unique_strings(
                             [*existing.source_files, analysis.filename]
                         ),
@@ -265,8 +285,31 @@ def _merge_modules(analyses: Sequence[ChunkAnalysis], known_modules: set[str]) -
 
 def _merge_configurations(analyses: Sequence[ChunkAnalysis]) -> dict[str, Any]:
     result: dict[str, Any] = {}
+    file_details: dict[str, dict[str, Any]] = {}
     for analysis in analyses:
         result.update(analysis.important_configs)
+        entry = file_details.setdefault(
+            analysis.filename,
+            {
+                "purpose": analysis.purpose,
+                "classes": [],
+                "functions": [],
+                "inputs": [],
+                "outputs": [],
+            },
+        )
+        if (
+            analysis.purpose
+            and analysis.purpose != NOT_ENOUGH_DATA
+            and entry["purpose"] == NOT_ENOUGH_DATA
+        ):
+            entry["purpose"] = analysis.purpose
+        entry["classes"] = _unique_strings([*entry["classes"], *analysis.classes])
+        entry["functions"] = _unique_strings([*entry["functions"], *analysis.functions])
+        entry["inputs"] = _unique_strings([*entry["inputs"], *analysis.inputs])
+        entry["outputs"] = _unique_strings([*entry["outputs"], *analysis.outputs])
+    if file_details:
+        result["file_details"] = file_details
     return result
 
 

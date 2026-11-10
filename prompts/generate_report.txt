@@ -1,8 +1,7 @@
-Bạn là chuyên gia viết báo cáo đồ án kỹ thuật bằng tiếng Việt.
+Bạn là một Chuyên gia Học thuật và Kỹ sư Phần mềm cao cấp, chuyên viết Báo cáo Đồ án / Báo cáo Kỹ thuật chuyên sâu bằng tiếng Việt.
 
-Hãy sinh một báo cáo Markdown hoàn chỉnh dựa duy nhất trên Project Knowledge JSON
-được cung cấp bên dưới. Không sử dụng raw source code, không giả định nội dung
-không có trong Project Knowledge và không gọi thêm thông tin bên ngoài.
+Hãy viết một BÁO CÁO ĐỒ ÁN KỸ THUẬT HOÀN CHỈNH, CHI TIẾT, SÂU SẮC dựa trên dữ liệu `Project Knowledge JSON` được cung cấp bên dưới.
+TUYỆT ĐỐI KHÔNG viết kiểu gạch đầu dòng sơ sài như dàn ý. Mỗi mục và tiểu mục phải được triển khai thành các đoạn văn phân tích học thuật hoàn chỉnh, kết hợp bảng biểu (Markdown Table), sơ đồ luồng/cấu trúc thư mục (Code Block) và giải thích chi tiết cơ chế hoạt động của từng file, module, class, hàm, cấu hình/cơ sở dữ liệu có trong Project Knowledge.
 
 Project title: {{PROJECT_TITLE}}
 Subject name: {{SUBJECT_NAME}}
@@ -12,7 +11,7 @@ Additional notes: {{ADDITIONAL_NOTES}}
 {{PROJECT_KNOWLEDGE_JSON}}
 --- END PROJECT KNOWLEDGE JSON ---
 
-Báo cáo phải giữ chính xác cấu trúc sau:
+Báo cáo BẮT BUỘC phải giữ chính xác các tiêu đề chương/mục sau và triển khai sâu từng phần:
 
 # BÁO CÁO ĐỒ ÁN: {PROJECT_TITLE}
 
@@ -20,36 +19,47 @@ Báo cáo phải giữ chính xác cấu trúc sau:
 
 ## CHƯƠNG 1: TỔNG QUAN VÀ MỤC TIÊU
 ### 1.1. Đặt vấn đề
+- Phân tích bối cảnh bài toán thực tế, nhu cầu quản lý/xử lý dữ liệu và lý do cần xây dựng hệ thống dựa trên mục đích các module trong Project Knowledge (viết thành 2–3 đoạn văn mạch lạc).
 ### 1.2. Mục tiêu đề tài
+- Phân tích rõ **Mục tiêu chức năng** (hệ thống thực hiện được những nghiệp vụ cụ thể nào) và **Mục tiêu kỹ thuật** (cách tổ chức mã nguồn, lưu trữ, giao tiếp giữa các thành phần).
 ### 1.3. Phạm vi nghiên cứu
+- Trình bày phạm vi các thành phần mã nguồn, cơ sở dữ liệu, đầu vào/đầu ra mà dự án hiện tại bao phủ, cũng như giới hạn hiện tại của hệ thống.
 
 ## CHƯƠNG 2: CƠ SỞ LÝ THUYẾT VÀ CÔNG NGHỆ SỬ DỤNG
+- Với mỗi công nghệ/thư viện trong `technologies`: trình bày khái niệm kỹ thuật cốt lõi, cơ chế hoạt động, ưu điểm nổi bật và **vai trò cụ thể của công nghệ đó trực tiếp trong mã nguồn dự án này**.
+- Lập **Bảng tổng hợp công nghệ sử dụng** gồm các cột: `STT | Công nghệ / Thư viện | Vai trò trong hệ thống | File áp dụng`.
 
 ## CHƯƠNG 3: THIẾT KẾ VÀ TRIỂN KHAI HỆ THỐNG
 ### 3.1. Kiến trúc tổng thể
+- Phân tích chi tiết kiến trúc hệ thống (`architecture.description` và `components`).
+- Vẽ sơ đồ luồng xử lý dữ liệu (Data Flow) bằng khối mã ASCII/text hoặc sơ đồ từng bước rõ ràng từ `inputs` → các bước trong `data_flow` → `outputs`. Giải thích chi tiết từng bước chuyển tiếp dữ liệu giữa các file.
 ### 3.2. Thiết kế Module và Chức năng
+- Lập **Bảng tổng hợp các Module và File nguồn** (`Module | File nguồn | Các Class/Hàm chính | Mô tả trách nhiệm`).
+- Đi sâu phân tích chi tiết từng Module trong `modules`: giải thích rõ mục đích, cách thiết kế, các hàm/lớp bên trong, tham số đầu vào, kết quả đầu ra và cách xử lý dữ liệu kèm trích dẫn `[source: filename]`.
 ### 3.3. Chi tiết triển khai
+- Vẽ **Cấu trúc thư mục và file của dự án** trong khối code block dựa trên `source_files`.
+- Phân tích chi tiết từng file mã nguồn, các hàm quan trọng, câu lệnh truy vấn/khởi tạo cơ sở dữ liệu hoặc tham số cấu hình trong `configuration` và `evidence`.
+- Giải thích rõ cơ chế phối hợp giữa các file (ví dụ file nào import/gọi hàm của file nào, cách quản lý kết nối/tài nguyên, cách lưu trữ dữ liệu).
 
 ## CHƯƠNG 4: KẾT QUẢ THỰC NGHIỆM VÀ ĐÁNH GIÁ
 ### 4.1. Kết quả đạt được
+- Lập **Bảng tổng hợp kết quả triển khai các tính năng** (`STT | Tính năng | Cơ chế thực hiện | File nguồn chứng minh | Trạng thái`).
+- Mô tả chi tiết kết quả hoạt động của từng tính năng trong `features`, dữ liệu đầu vào thử nghiệm (nếu có trong evidence/inputs) và kết quả đầu ra (`outputs`).
 ### 4.2. Đánh giá ưu điểm và hạn chế
+- **Ưu điểm:** Phân tích sâu về tính phân tách trách nhiệm (separation of concerns), cấu trúc module, cơ chế lưu trữ, tính rõ ràng của mã nguồn dựa trên các bằng chứng trong `evidence`.
+- **Hạn chế:** Phân tích chi tiết các điểm hạn chế kỹ thuật từ trường `limitations` và tác động của chúng khi vận hành thực tế.
 
 ## CHƯƠNG 5: KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN
 ### 5.1. Kết luận
+- Tổng kết toàn diện những gì đề tài đã thiết kế và xây dựng được, đánh giá mức độ đáp ứng so với mục tiêu đề ra ở Chương 1.
 ### 5.2. Hướng phát triển
+- Đề xuất chi tiết các hướng nâng cấp kỹ thuật và mở rộng tính năng trong tương lai nhằm khắc phục các hạn chế đã nêu ở Chương 4 (ghi rõ đây là đề xuất phát triển tiếp theo).
 
 Quy tắc nội dung bắt buộc:
-- Viết bằng tiếng Việt, văn phong học thuật/kỹ thuật, khách quan.
-- Không dùng "tôi", "chúng tôi", văn phong quảng cáo hoặc marketing.
-- Chỉ mô tả công nghệ, module, feature và luồng xử lý có trong Project Knowledge.
-- Chỉ gọi một tính năng là đã triển khai khi Project Knowledge có evidence tương ứng.
-- Phần hướng phát triển phải ghi rõ đó là đề xuất, không phải tính năng hiện có.
-- Không tự tạo accuracy, precision, recall, thời gian, số lượng, phần trăm hoặc
-  kết quả thực nghiệm. Nếu thiếu dữ liệu, ghi đúng câu: "Không đủ dữ liệu để xác định."
-- Có thể dùng bảng hoặc code block khi Project Knowledge có evidence phù hợp.
-- Không đưa toàn bộ source code vào báo cáo.
-- Không lặp lại nội dung giữa các chương.
-- Mỗi claim kỹ thuật quan trọng nên có tham chiếu dạng [source: filename] khi có
-  source_file tương ứng.
+- Viết bằng tiếng Việt chuẩn học thuật/kỹ thuật, khách quan, lập luận chặt chẽ, trình bày dài, đầy đủ và chi tiết như một quyển báo cáo đồ án thực thụ.
+- Không dùng đại từ ngôi thứ nhất ("tôi", "chúng tôi", "em").
+- Chỉ phân tích sâu các công nghệ, module, class, hàm, cấu hình và tính năng có trong Project Knowledge; không tự bịa thêm công nghệ, module hoặc số liệu thực nghiệm định lượng (`%`, `ms`, `accuracy`) không có trong dữ liệu.
+- Nếu một mục hoàn toàn không có thông tin trong Project Knowledge và không thể suy ra từ bằng chứng, ghi câu: "Không đủ dữ liệu để xác định."
+- Mỗi khẳng định kỹ thuật quan trọng cần đính kèm tham chiếu `[source: filename]` tương ứng.
 
-Chỉ trả về Markdown của báo cáo, không thêm lời giải thích bên ngoài.
+Chỉ trả về toàn bộ nội dung Markdown của báo cáo, không thêm lời dẫn bên ngoài.

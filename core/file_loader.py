@@ -43,6 +43,7 @@ SUPPORTED_EXTENSIONS: frozenset[str] = frozenset(
         ".txt",
         ".properties",
         ".gradle",
+        ".kts",
         ".sql",
         ".html",
         ".css",
@@ -53,6 +54,27 @@ SUPPORTED_EXTENSIONS: frozenset[str] = frozenset(
 
 TEXT_EXTENSIONS = SUPPORTED_EXTENSIONS - {".pdf", ".docx"}
 ARCHIVE_EXTENSIONS = frozenset({".zip"})
+_IGNORED_ARCHIVE_DIRS: frozenset[str] = frozenset(
+    {
+        ".git",
+        ".github",
+        ".idea",
+        ".vscode",
+        ".gradle",
+        ".agents",
+        ".agent",
+        ".claude",
+        ".cursor",
+        ".gemini",
+        "node_modules",
+        "__pycache__",
+        ".pytest_cache",
+        ".venv",
+        "venv",
+        "build",
+        "dist",
+    }
+)
 _CONTROL_CHARACTER_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:")
 
@@ -328,6 +350,10 @@ def _load_zip_file(
                 )
                 continue
             seen_names.add(safe_name)
+
+            path_parts = PurePosixPath(safe_name).parts[:-1]
+            if any(part in _IGNORED_ARCHIVE_DIRS for part in path_parts):
+                continue
 
             extension = Path(safe_name).suffix.lower()
             if extension not in SUPPORTED_EXTENSIONS:

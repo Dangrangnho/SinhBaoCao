@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable, Sequence
 from typing import Any, Protocol, TypeVar
 
+import httpx
 from openai import OpenAI
 from pydantic import BaseModel
 
@@ -17,6 +18,14 @@ from utils.json_utils import extract_json
 logger = logging.getLogger(__name__)
 Message = dict[str, str]
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
+
+_GEMINI_REST_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+)
+_VERTEX_EXPRESS_URL = (
+    "https://aiplatform.googleapis.com/v1/publishers/google/models/{model}:generateContent"
+)
+_FALLBACK_GEMINI_MODELS = ("gemini-3.5-flash-lite", "gemini-3.1-flash-lite")
 
 
 class LLMClientError(RuntimeError):
@@ -51,15 +60,20 @@ class LLMClient:
     ) -> None:
         self.settings = settings or get_settings()
         self._sleep = sleep_fn
+        self._api_key = self.settings.gemini_api_key or self.settings.openai_api_key
+        self._custom_client = client is not None
+        self._preferred_rest_template: str | None = (
+            _GEMINI_REST_URL if self._api_key.startswith("AQ.") else None
+        )
         if client is not None:
             self._client = client
         else:
-            if not self.settings.openai_api_key:
+            if not self._api_key:
                 raise LLMConfigurationError(
-                    "Không tìm thấy OPENAI_API_KEY trong environment hoặc file .env."
+                    "Không tìm thấy GEMINI_API_KEY (hoặc OPENAI_API_KEY) trong environment hoặc file .env."
                 )
             self._client = OpenAI(
-                api_key=self.settings.openai_api_key,
+                api_key=self._api_key,
                 base_url=self.settings.llm_base_url,
                 timeout=self.settings.request_timeout,
                 max_retries=0,
@@ -76,7 +90,15 @@ class LLMClient:
         if not messages:
             raise ValueError("messages không được rỗng.")
 
-        selected_model = model or self.settings.openai_model
+        selected_model = (
+            model
+            or (
+                self.settings.gemini_model
+                if self.settings.gemini_model != Settings.gemini_model
+                else self.settings.openai_model
+            )
+            or self.settings.gemini_model
+        )
         selected_temperature = (
             temperature
             if temperature is not None
@@ -86,12 +108,11 @@ class LLMClient:
 
         for attempt in range(self.settings.max_retries + 1):
             try:
-                response = self._client.chat.completions.create(
+                content = self._request_completion(
+                    messages=messages,
                     model=selected_model,
-                    messages=list(messages),
                     temperature=selected_temperature,
                 )
-                content = response.choices[0].message.content
                 if not content:
                     raise LLMClientError("LLM trả về response rỗng.")
                 return content
@@ -109,6 +130,91 @@ class LLMClient:
                 self._sleep(delay)
 
         raise LLMClientError(f"LLM request thất bại: {last_error}") from last_error
+
+    def _request_completion(
+        self,
+        *,
+        messages: Sequence[Message],
+        model: str,
+        temperature: float,
+    ) -> str:
+        """Dispatch to OpenAI-compatible SDK or Gemini/Vertex REST for AQ.* keys."""
+        if self._custom_client or not self._preferred_rest_template:
+            try:
+                response = self._client.chat.completions.create(
+                    model=model,
+                    messages=list(messages),
+                    temperature=temperature,
+                )
+                return response.choices[0].message.content or ""
+            except Exception as openai_exc:
+                if self._custom_client or not self._api_key:
+                    raise
+                logger.info(
+                    "OpenAI-compatible call failed (%s); trying Gemini/Vertex REST fallback.",
+                    type(openai_exc).__name__,
+                )
+                return self._call_gemini_rest_with_fallback(
+                    messages=messages,
+                    model=model,
+                    temperature=temperature,
+                    prior_error=openai_exc,
+                )
+
+        return self._call_gemini_rest_with_fallback(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+        )
+
+    def _call_gemini_rest_with_fallback(
+        self,
+        *,
+        messages: Sequence[Message],
+        model: str,
+        temperature: float,
+        prior_error: Exception | None = None,
+    ) -> str:
+        """Try Gemini REST and Vertex AI Express Mode endpoints with model fallback."""
+        templates = (
+            [self._preferred_rest_template]
+            if self._preferred_rest_template
+            else []
+        )
+        for candidate in (_GEMINI_REST_URL, _VERTEX_EXPRESS_URL):
+            if candidate not in templates:
+                templates.append(candidate)
+
+        candidate_models = [model]
+        for fallback_model in _FALLBACK_GEMINI_MODELS:
+            if fallback_model not in candidate_models:
+                candidate_models.append(fallback_model)
+
+        last_exc: Exception | None = prior_error
+        for current_model in candidate_models:
+            for template in templates:
+                try:
+                    text = _call_google_generate_content(
+                        url_template=template,
+                        api_key=self._api_key,
+                        model=current_model,
+                        messages=messages,
+                        temperature=temperature,
+                        timeout=self.settings.request_timeout,
+                    )
+                    self._preferred_rest_template = template
+                    return text
+                except httpx.HTTPStatusError as exc:
+                    last_exc = exc
+                    status_code = exc.response.status_code
+                    # 404/503 ongenerativelanguage means model deprecated/overloaded; skip Vertex 403
+                    if template == _GEMINI_REST_URL and status_code in {404, 503}:
+                        break
+                except Exception as exc:
+                    last_exc = exc
+
+        assert last_exc is not None
+        raise last_exc
 
     def generate_json(
         self,
@@ -163,6 +269,74 @@ class MockLLMClient:
             self.generate_text(messages, temperature=temperature, model=model)
         )
         return schema.model_validate(payload) if schema is not None else payload
+
+
+def _call_google_generate_content(
+    *,
+    url_template: str,
+    api_key: str,
+    model: str,
+    messages: Sequence[Message],
+    temperature: float,
+    timeout: float,
+) -> str:
+    """Call Google's native generateContent endpoint (Vertex Express or AI Studio)."""
+    clean_model = model.removeprefix("models/")
+    url = url_template.format(model=clean_model)
+    contents: list[dict[str, Any]] = []
+    system_parts: list[dict[str, str]] = []
+
+    for message in messages:
+        role = message.get("role", "user")
+        text = message.get("content", "")
+        if role == "system":
+            system_parts.append({"text": text})
+        else:
+            gemini_role = "model" if role == "assistant" else "user"
+            contents.append({"role": gemini_role, "parts": [{"text": text}]})
+
+    generation_config: dict[str, Any] = {
+        "temperature": temperature,
+        "maxOutputTokens": 8192,
+    }
+    if clean_model.startswith("gemini-3"):
+        generation_config["thinkingConfig"] = {"thinkingLevel": "MINIMAL"}
+
+    payload: dict[str, Any] = {
+        "contents": contents or [{"role": "user", "parts": [{"text": ""}]}],
+        "generationConfig": generation_config,
+    }
+    if system_parts:
+        payload["systemInstruction"] = {"parts": system_parts}
+
+    response = httpx.post(
+        url,
+        params={"key": api_key},
+        json=payload,
+        timeout=timeout,
+    )
+    if response.status_code == 400 and "thinkingConfig" in generation_config:
+        generation_config.pop("thinkingConfig", None)
+        response = httpx.post(
+            url,
+            params={"key": api_key},
+            json=payload,
+            timeout=timeout,
+        )
+    response.raise_for_status()
+    data = response.json()
+    candidates = data.get("candidates") or []
+    if not candidates:
+        raise LLMClientError(f"Gemini response không có candidates: {data}")
+    parts = candidates[0].get("content", {}).get("parts") or []
+    text_parts = [
+        str(part.get("text", ""))
+        for part in parts
+        if "text" in part and not part.get("thought", False)
+    ]
+    if not text_parts:
+        text_parts = [str(part.get("text", "")) for part in parts if "text" in part]
+    return "".join(text_parts)
 
 
 def _dump_json(value: Any) -> str:

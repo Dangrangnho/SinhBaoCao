@@ -16,22 +16,24 @@ Hãy trả về duy nhất một JSON object hợp lệ với các trường:
 {
   "filename": "{{FILENAME}}",
   "chunk_index": {{CHUNK_INDEX}},
-  "purpose": "",
-  "technologies": [],
-  "modules": [],
-  "classes": [],
-  "functions": [],
-  "inputs": [],
-  "outputs": [],
-  "features": [],
-  "data_flow": [],
-  "important_configs": {},
-  "limitations": [],
+  "purpose": "Mô tả chi tiết vai trò, trách nhiệm và cơ chế hoạt động của đoạn mã/tài liệu này (2-4 câu rõ ràng)",
+  "technologies": ["Tên công nghệ/thư viện/công cụ"],
+  "modules": ["Tên module logic mà file này thuộc về"],
+  "classes": ["TênClass: mô tả ngắn vai trò và các thuộc tính/phương thức chính"],
+  "functions": ["ten_ham(tham_so): mô tả chi tiết logic xử lý, đầu vào và kết quả của hàm"],
+  "inputs": ["Dữ liệu đầu vào, tham số, sự kiện hoặc file cấu hình"],
+  "outputs": ["Kết quả đầu ra, thay đổi trạng thái DB, giá trị trả về hoặc thông báo"],
+  "features": ["Tên tính năng cụ thể và cơ chế thực hiện"],
+  "data_flow": ["Bước xử lý dữ liệu cụ thể từ hàm/thành phần này sang thành phần khác"],
+  "important_configs": {
+    "ten_cau_hinh_hoac_schema_sql": "Giá trị cụ thể, câu lệnh SQL, đường dẫn file, hằng số quan trọng"
+  },
+  "limitations": ["Hạn chế kỹ thuật quan sát được trong code (ví dụ: chưa xử lý ngoại lệ, hardcode, chưa mã hóa...)"],
   "evidence": [
     {
-      "claim": "",
+      "claim": "Khẳng định kỹ thuật chi tiết kèm tên hàm/biến/câu lệnh cụ thể làm bằng chứng",
       "source_file": "{{FILENAME}}",
-      "source_location": "",
+      "source_location": "Tên hàm/class hoặc vị trí dòng",
       "confidence": "low|medium|high"
     }
   ]

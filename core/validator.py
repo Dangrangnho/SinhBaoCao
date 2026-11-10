@@ -19,30 +19,31 @@ from models.project_schema import Evidence, ProjectKnowledge, ValidationIssue, V
 NOT_ENOUGH_DATA = "Không đủ dữ liệu để xác định."
 _VALIDATE_PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "validate_report.txt"
 _REVISE_PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "revise_report.txt"
-_TECH_KEYWORD_RE = re.compile(
-    r"(?:công nghệ|technology|framework|thư viện|library|api|database|"
-    r"cơ sở dữ liệu|sử dụng|dùng)\b",
+_TECH_LABEL_RE = re.compile(
+    r"^\s*(?:[-*•]\s*)?(?:\*\*)?(?:công nghệ|technology|technologies|framework|thư viện|library)"
+    r"(?:\s+sử dụng|\s+chính)?(?:\*\*)?\s*:\s*(.+)$",
+    re.IGNORECASE,
+)
+_FEATURE_LABEL_RE = re.compile(
+    r"^\s*(?:[-*•]\s*)?(?:\*\*)?(?:tính năng|chức năng|feature|features)"
+    r"(?:\s+chính)?(?:\*\*)?\s*:\s*(.+)$",
     re.IGNORECASE,
 )
 _MODULE_RE = re.compile(
-    r"\b(?:module|mô-đun)\s+([A-Za-zÀ-ỹ][\wÀ-ỹ+#.\-/]*(?:\s+[A-Za-zÀ-ỹ][\wÀ-ỹ+#.\-/]*){0,3})",
-    re.IGNORECASE,
+    r"\b(?:[Mm]odule|[Mm]ô-đun)\s+([A-Z][A-Za-z0-9_+#.\-]*(?:\s+[A-Z][A-Za-z0-9_+#.\-]*){0,2}\s+Module)\b"
 )
 _REVERSE_MODULE_RE = re.compile(
-    r"\b([A-Za-z][\w+#.\-/]*(?:\s+[A-Za-z][\w+#.\-/]*){0,2})\s+module\b",
-    re.IGNORECASE,
+    r"\b([A-Z][A-Za-z0-9_+#.\-]*(?:\s+[A-Z][A-Za-z0-9_+#.\-]*){0,2}\s+Module)\b"
 )
 _METRIC_RE = re.compile(
-    r"(?<!\w)\d+(?:[.,]\d+)?\s*(?:%|ms|s|giây|phút|giờ|mẫu|file|"
-    r"người dùng|module|chức năng|request|requests)?\b",
+    r"(?<!\w)\d+(?:[.,]\d+)?\s*(?:%|(?:ms|s|giây|phút|giờ)\b)",
     re.IGNORECASE,
 )
 _METRIC_CONTEXT_RE = re.compile(
-    r"(?:độ chính xác|accuracy|precision|recall|f1|thời gian|tốc độ|"
-    r"số lượng|đạt|kết quả|benchmark|hiệu năng|mẫu|ms|giây|phút|%)",
+    r"(?:độ chính xác|accuracy|precision|recall|f1|thời gian phản hồi|tốc độ|"
+    r"benchmark|hiệu năng đạt)",
     re.IGNORECASE,
 )
-_FEATURE_CONTEXT_RE = re.compile(r"(?:tính năng|chức năng|feature)\b", re.IGNORECASE)
 _STOP_WORDS = {
     "là",
     "gồm",
@@ -53,6 +54,8 @@ _STOP_WORDS = {
     "dùng",
     "sử dụng",
     "và",
+    "các",
+    "python",
     "the",
     "a",
     "an",
@@ -258,7 +261,7 @@ def _check_technologies(report: str, knowledge: ProjectKnowledge) -> list[Valida
     known_keys = {technology.casefold() for technology in known}
     issues: list[ValidationIssue] = []
     for line in report.splitlines():
-        if line.lstrip().startswith("#") or not _TECH_KEYWORD_RE.search(line):
+        if line.lstrip().startswith("#"):
             continue
         for candidate in _extract_technology_candidates(line):
             if not _matches_known(candidate, known_keys):
@@ -274,9 +277,9 @@ def _check_technologies(report: str, knowledge: ProjectKnowledge) -> list[Valida
 
 def _check_features(report: str, knowledge: ProjectKnowledge) -> list[ValidationIssue]:
     issues: list[ValidationIssue] = []
-    evidence_claims = [evidence.claim.casefold() for evidence in _all_evidence(knowledge)]
-    for feature in knowledge.features:
-        if feature.casefold() not in " ".join(evidence_claims):
+    all_ev = _all_evidence(knowledge)
+    if knowledge.features and not all_ev:
+        for feature in knowledge.features:
             issues.append(
                 ValidationIssue(
                     claim=feature,
@@ -287,11 +290,14 @@ def _check_features(report: str, knowledge: ProjectKnowledge) -> list[Validation
 
     known_features = {feature.casefold() for feature in knowledge.features}
     for line in report.splitlines():
-        if line.lstrip().startswith("#") or not _FEATURE_CONTEXT_RE.search(line):
+        if line.lstrip().startswith("#"):
             continue
-        candidates = _extract_label_candidates(line, _FEATURE_CONTEXT_RE)
+        candidates = _extract_label_candidates(line, _FEATURE_LABEL_RE)
         for candidate in candidates:
-            if candidate.casefold() not in known_features and candidate.casefold() != NOT_ENOUGH_DATA.casefold():
+            if (
+                candidate.casefold() not in known_features
+                and candidate.casefold() != NOT_ENOUGH_DATA.casefold()
+            ):
                 issues.append(
                     ValidationIssue(
                         claim=candidate,
@@ -349,21 +355,27 @@ def _check_unsupported_metrics(report: str) -> list[ValidationIssue]:
 
 
 def _extract_technology_candidates(line: str) -> list[str]:
-    candidates: list[str] = []
-    for match in _TECH_KEYWORD_RE.finditer(line):
-        suffix = line[match.end() :]
-        suffix = re.sub(r"^\s*(?:sử dụng|là|gồm|bao gồm|của)\s*[:\-]?\s*", "", suffix, flags=re.I)
-        suffix = suffix.split("[source:", maxsplit=1)[0]
-        candidates.extend(_split_candidates(suffix))
-    return candidates
+    match = _TECH_LABEL_RE.match(line)
+    if not match:
+        return []
+    suffix = match.group(1).split("[source:", maxsplit=1)[0]
+    return [
+        candidate
+        for candidate in _split_candidates(suffix)
+        if len(candidate.split()) <= 4 and candidate.casefold() not in _STOP_WORDS
+    ]
 
 
 def _extract_label_candidates(line: str, pattern: re.Pattern[str]) -> list[str]:
-    candidates: list[str] = []
-    for match in pattern.finditer(line):
-        suffix = line[match.end() :].lstrip(" :–—-\t")
-        candidates.extend(_split_candidates(suffix))
-    return candidates
+    match = pattern.match(line)
+    if not match:
+        return []
+    suffix = match.group(1).split("[source:", maxsplit=1)[0]
+    return [
+        candidate
+        for candidate in _split_candidates(suffix)
+        if len(candidate.split()) <= 5 and candidate.casefold() not in _STOP_WORDS
+    ]
 
 
 def _split_candidates(value: str) -> list[str]:

@@ -1,7 +1,13 @@
 """Tests for cache behavior and Markdown export helpers."""
 
 from core.analyzer import ChunkAnalyzer
-from core.exporter import build_report_filename, export_markdown, markdown_bytes
+from core.exporter import (
+    build_report_filename,
+    docx_bytes,
+    export_markdown,
+    markdown_bytes,
+    pdf_bytes,
+)
 from llm.llm_client import MockLLMClient
 from utils.cache import ContentCache, sha256_content
 
@@ -35,10 +41,14 @@ def test_analyzer_uses_cached_chunk_without_second_llm_call(tmp_path) -> None:
 
 
 def test_exporter_uses_required_filename_and_utf8(tmp_path) -> None:
-    report = "# Báo cáo\n\nNội dung tiếng Việt."
+    report = "# Báo cáo\n\n## CHƯƠNG 1\n\n- **Mục tiêu:** `SQLite`\n\nNội dung tiếng Việt."
 
     assert build_report_filename("Đồ án Face Recognition") == "technical_report_do_an_face_recognition.md"
+    assert build_report_filename("Đồ án Face Recognition", "docx") == "technical_report_do_an_face_recognition.docx"
+    assert build_report_filename("Đồ án Face Recognition", "pdf") == "technical_report_do_an_face_recognition.pdf"
     assert markdown_bytes(report).decode("utf-8") == report
+    assert docx_bytes(report).startswith(b"PK")
+    assert pdf_bytes(report).startswith(b"%PDF")
     path = export_markdown(report, "Demo Project", tmp_path)
     assert path.name == "technical_report_demo_project.md"
     assert path.read_text(encoding="utf-8") == report

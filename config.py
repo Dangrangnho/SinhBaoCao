@@ -8,16 +8,18 @@ from dataclasses import dataclass
 from dotenv import load_dotenv
 
 
-load_dotenv()
+load_dotenv(override=True)
 
 
 @dataclass(frozen=True)
 class Settings:
     """Runtime settings for the report generator."""
 
-    llm_base_url: str = "https://api.openai.com/v1"
+    llm_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-3.5-flash-lite"
     openai_api_key: str = ""
-    openai_model: str = "gpt-4o-mini"
+    openai_model: str = "gemini-3.5-flash-lite"
     chunk_size: int = 6000
     chunk_overlap: int = 500
     analysis_temperature: float = 0.1
@@ -35,10 +37,21 @@ class Settings:
 
 def get_settings() -> Settings:
     """Build settings from environment variables without exposing secrets."""
+    api_key = (
+        os.getenv("GEMINI_API_KEY", "").strip()
+        or os.getenv("OPENAI_API_KEY", "").strip()
+    )
+    model = (
+        os.getenv("GEMINI_MODEL", "").strip()
+        or os.getenv("OPENAI_MODEL", "").strip()
+        or Settings.gemini_model
+    )
     return Settings(
         llm_base_url=os.getenv("LLM_BASE_URL", Settings.llm_base_url).strip(),
-        openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
-        openai_model=os.getenv("OPENAI_MODEL", Settings.openai_model).strip(),
+        gemini_api_key=api_key,
+        gemini_model=model,
+        openai_api_key=api_key,
+        openai_model=model,
         chunk_size=_get_int("CHUNK_SIZE", Settings.chunk_size),
         chunk_overlap=_get_int("CHUNK_OVERLAP", Settings.chunk_overlap),
         analysis_temperature=_get_float(

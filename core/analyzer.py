@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -131,24 +132,60 @@ class ChunkAnalyzer:
         chunks: Sequence[Mapping[str, Any]],
         progress_callback: Any | None = None,
     ) -> AnalysisRun:
-        """Run sequentially for the MVP, with a seam for future parallelism."""
-        analyses: list[ChunkAnalysis] = []
-        errors: list[dict[str, Any]] = []
+        """Analyze chunks, using bounded concurrency when client is thread-safe."""
+        total = len(chunks)
+        # Keep MockLLMClient (which pops from a shared queue in order) sequential.
+        use_parallel = total > 1 and not hasattr(self.llm_client, "calls")
 
-        for position, chunk in enumerate(chunks, start=1):
-            try:
-                analyses.append(self.analyze_chunk(chunk))
-            except ChunkAnalysisError as exc:
-                errors.append(
-                    {
+        if not use_parallel:
+            analyses: list[ChunkAnalysis] = []
+            errors: list[dict[str, Any]] = []
+            for position, chunk in enumerate(chunks, start=1):
+                try:
+                    analyses.append(self.analyze_chunk(chunk))
+                except ChunkAnalysisError as exc:
+                    errors.append(
+                        {
+                            "filename": str(chunk.get("filename", "unknown")),
+                            "chunk_index": chunk.get("chunk_index", 0),
+                            "error": str(exc),
+                        }
+                    )
+                if progress_callback is not None:
+                    progress_callback(position, total)
+            return AnalysisRun(
+                analyses=analyses,
+                errors=errors,
+                stats=build_analysis_stats(analyses),
+            )
+
+        ordered_analyses: dict[int, ChunkAnalysis] = {}
+        ordered_errors: dict[int, dict[str, Any]] = {}
+        completed_count = 0
+        max_workers = min(4, total)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_index = {
+                executor.submit(self.analyze_chunk, chunk): idx
+                for idx, chunk in enumerate(chunks)
+            }
+            for future in as_completed(future_to_index):
+                idx = future_to_index[future]
+                chunk = chunks[idx]
+                try:
+                    ordered_analyses[idx] = future.result()
+                except ChunkAnalysisError as exc:
+                    ordered_errors[idx] = {
                         "filename": str(chunk.get("filename", "unknown")),
                         "chunk_index": chunk.get("chunk_index", 0),
                         "error": str(exc),
                     }
-                )
-            if progress_callback is not None:
-                progress_callback(position, len(chunks))
+                completed_count += 1
+                if progress_callback is not None:
+                    progress_callback(completed_count, total)
 
+        analyses = [ordered_analyses[i] for i in sorted(ordered_analyses)]
+        errors = [ordered_errors[i] for i in sorted(ordered_errors)]
         return AnalysisRun(
             analyses=analyses,
             errors=errors,

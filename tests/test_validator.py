@@ -114,3 +114,18 @@ def test_revision_is_bounded_and_preserves_chapter_structure() -> None:
     assert result.report == revised
     assert result.validation_result.valid is True
     assert all(heading in result.report for heading in REPORT_HEADINGS)
+
+
+def test_code_validator_does_not_false_flag_normal_vietnamese_prose() -> None:
+    prose = (
+        "Dự án dùng để kiểm thử AI Technical Report Generator và lưu trữ người dùng mẫu.\n"
+        "Các thành phần chính: main.py làm entry point để khởi tạo cơ sở dữ liệu.\n"
+        "Các tính năng chính đã được triển khai bao gồm lưu trữ thông qua các module Python.\n"
+    )
+    validator = ReportValidator(MockLLMClient([]))
+
+    result = validator.validate_code(_report(prose), _knowledge())
+
+    assert result.valid is True
+    assert result.issues == []
+

@@ -9,7 +9,7 @@ import streamlit as st
 from pydantic import ValidationError
 
 from core.pipeline import PipelineError, analyze_project
-from core.exporter import build_report_filename, markdown_bytes
+from core.exporter import build_report_filename, docx_bytes, markdown_bytes, pdf_bytes
 from core.report_generator import ReportGenerationError, generate_report
 from core.validator import ValidatorError, validate_and_revise_report
 from models.project_schema import ProjectKnowledge
@@ -36,6 +36,7 @@ SUPPORTED_UPLOAD_TYPES = [
     "txt",
     "properties",
     "gradle",
+    "kts",
     "sql",
     "html",
     "css",
@@ -301,6 +302,8 @@ def _render_report_step() -> None:
         st.info("Chưa có báo cáo. Bấm Generate Report để bắt đầu.")
         return
 
+    _render_download_buttons(report, key_prefix="step5")
+
     preview_tab, raw_tab, validation_tab = st.tabs(
         ["Preview", "Raw Markdown", "Validation"]
     )
@@ -308,17 +311,41 @@ def _render_report_step() -> None:
         st.markdown(report)
     with raw_tab:
         st.code(report, language="markdown")
-        st.download_button(
-            "Download Markdown",
-            data=markdown_bytes(report),
-            file_name=build_report_filename(
-                st.session_state.get("project_title", "project")
-            ),
-            mime="text/markdown",
-            use_container_width=True,
-        )
     with validation_tab:
         _render_validation_result()
+
+
+def _render_download_buttons(report: str, *, key_prefix: str) -> None:
+    """Render download buttons for Word (.docx), PDF (.pdf), and Markdown (.md)."""
+    project_title = st.session_state.get("project_title", "project")
+    docx_col, pdf_col, md_col = st.columns(3)
+    with docx_col:
+        st.download_button(
+            "📄 Tải báo cáo Word (.docx)",
+            data=docx_bytes(report),
+            file_name=build_report_filename(project_title, "docx"),
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            use_container_width=True,
+            key=f"{key_prefix}_download_docx",
+        )
+    with pdf_col:
+        st.download_button(
+            "📕 Tải báo cáo PDF (.pdf)",
+            data=pdf_bytes(report),
+            file_name=build_report_filename(project_title, "pdf"),
+            mime="application/pdf",
+            use_container_width=True,
+            key=f"{key_prefix}_download_pdf",
+        )
+    with md_col:
+        st.download_button(
+            "📝 Tải báo cáo Markdown (.md)",
+            data=markdown_bytes(report),
+            file_name=build_report_filename(project_title, "md"),
+            mime="text/markdown",
+            use_container_width=True,
+            key=f"{key_prefix}_download_md",
+        )
 
 
 def _render_validation_step() -> None:
@@ -357,6 +384,9 @@ def _render_validation_step() -> None:
         st.rerun()
 
     _render_validation_result()
+    if st.session_state.validation_result:
+        st.markdown("#### Tải báo cáo sau khi xác thực")
+        _render_download_buttons(st.session_state.report, key_prefix="step6")
 
 
 def _render_validation_result() -> None:
