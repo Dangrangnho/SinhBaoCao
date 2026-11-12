@@ -61,7 +61,7 @@ def analyze_project(
     """Run the MVP analysis pipeline while preserving partial file errors."""
     settings = get_settings()
     if not uploaded_files:
-        raise PipelineError("Chưa có file nào được upload.")
+        raise PipelineError("Chưa có tệp nào được tải lên.")
 
     total_size = sum(len(bytes(item.get("content", b""))) for item in uploaded_files)
     if total_size > settings.max_total_upload_size:
@@ -69,7 +69,7 @@ def analyze_project(
             f"Tổng dung lượng file vượt quá giới hạn {settings.max_total_upload_size} bytes."
         )
 
-    _progress(progress_callback, "Reading files...", 0.05)
+    _progress(progress_callback, "Đang đọc tệp...", 0.05)
     file_inputs = [
         InMemoryFile(
             name=str(item.get("filename", "uploaded_file.txt")),
@@ -85,7 +85,7 @@ def analyze_project(
         max_archive_members=settings.max_archive_members,
     )
 
-    _progress(progress_callback, "Preprocessing files...", 0.18)
+    _progress(progress_callback, "Đang tiền xử lý tệp...", 0.18)
     preprocessed_files = preprocess_records(file_results)
     loadable_files = [record for record in preprocessed_files if record.get("status") == "loaded"]
     if not loadable_files:
@@ -94,10 +94,17 @@ def analyze_project(
             file_results=file_results,
         )
 
-    _progress(progress_callback, "Creating chunks...", 0.28)
+    _progress(progress_callback, "Đang chia nội dung thành các đoạn...", 0.28)
     chunks = chunk_documents(loadable_files)
     if not chunks:
-        raise PipelineError("Không tạo được chunk từ các file hợp lệ.", file_results=file_results)
+        raise PipelineError("Không chia được đoạn nội dung nào từ các tệp hợp lệ.", file_results=file_results)
+    if len(chunks) > settings.max_chunks:
+        raise PipelineError(
+            f"Dự án tạo ra {len(chunks)} đoạn nội dung, vượt giới hạn MAX_CHUNKS="
+            f"{settings.max_chunks}. Hãy loại bớt tệp không cần thiết hoặc tăng "
+            "CHUNK_SIZE/MAX_CHUNKS.",
+            file_results=file_results,
+        )
 
     try:
         client = llm_client or LLMClient(settings=settings)
@@ -111,7 +118,7 @@ def analyze_project(
         chunks,
         progress_callback=lambda current, total: _progress(
             progress_callback,
-            f"Analyzing chunk {current}/{total}...",
+            f"Đang phân tích đoạn {current}/{total}...",
             0.30 + (0.45 * current / max(total, 1)),
         ),
     )
@@ -123,13 +130,13 @@ def analyze_project(
     )
     if not analysis_run.analyses:
         raise PipelineError(
-            "Không có chunk nào phân tích thành công. Kiểm tra API, JSON response "
-            "hoặc nội dung file.",
+            "Không có đoạn nội dung nào được phân tích thành công. Hãy kiểm tra API key, "
+            "phản hồi JSON của LLM hoặc nội dung tệp.",
             file_results=file_results,
             analysis_errors=analysis_run.errors,
         )
 
-    _progress(progress_callback, "Building project knowledge...", 0.80)
+    _progress(progress_callback, "Đang tổng hợp tri thức dự án...", 0.80)
     builder = KnowledgeBuilder(client)
     try:
         knowledge_result = builder.build(
@@ -142,11 +149,11 @@ def analyze_project(
         )
     except KnowledgeBuildError as exc:
         raise PipelineError(
-            f"Không thể xây dựng Project Knowledge: {exc}",
+            f"Không thể tổng hợp tri thức dự án: {exc}",
             file_results=file_results,
             analysis_errors=analysis_run.errors,
         ) from exc
-    _progress(progress_callback, "Analysis completed.", 1.0)
+    _progress(progress_callback, "Phân tích hoàn tất.", 1.0)
 
     return PipelineResult(
         file_results=file_results,

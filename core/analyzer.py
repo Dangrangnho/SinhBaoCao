@@ -14,9 +14,10 @@ from pydantic import BaseModel, ValidationError
 from config import get_settings
 from models.project_schema import ChunkAnalysis
 from utils.cache import ContentCache, sha256_content
+from utils.text_utils import NOT_ENOUGH_DATA, as_string_list, unique_strings
 
 
-NOT_ENOUGH_DATA = "Không đủ dữ liệu để xác định."
+_CACHE_SCHEMA_VERSION = "chunk-analysis-v1"
 _PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "analyze_chunk.txt"
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,16 @@ class ChunkAnalyzer:
         self.prompt_template = (prompt_path or _PROMPT_PATH).read_text(encoding="utf-8")
         self.settings = get_settings()
         self.cache = cache or ContentCache()
+        # Cache entries are only reusable for the same model, prompt and schema.
+        self._cache_namespace = sha256_content(
+            "\n".join(
+                (
+                    _CACHE_SCHEMA_VERSION,
+                    self.settings.openai_model,
+                    sha256_content(self.prompt_template),
+                )
+            )
+        )
 
     def analyze_chunk(self, chunk: Mapping[str, Any]) -> ChunkAnalysis:
         """Analyze exactly one chunk and validate the result with Pydantic."""
@@ -75,10 +86,11 @@ class ChunkAnalyzer:
         chunk_index = _as_non_negative_int(chunk.get("chunk_index", 0))
         content = str(chunk.get("content", ""))
         if not content.strip():
-            raise ChunkAnalysisError(f"Chunk rỗng: {filename}#{chunk_index}.")
+            raise ChunkAnalysisError(f"Đoạn nội dung rỗng: {filename}#{chunk_index}.")
 
         content_hash = str(chunk.get("content_sha256") or sha256_content(content))
-        cached_payload = self.cache.get(content_hash)
+        cache_key = sha256_content(f"{self._cache_namespace}:{content_hash}")
+        cached_payload = self.cache.get(cache_key)
         if cached_payload is not None:
             try:
                 cached_payload = _rebind_cached_payload(
@@ -115,12 +127,12 @@ class ChunkAnalyzer:
                 chunk_index=chunk_index,
             )
             analysis = ChunkAnalysis.model_validate(payload)
-            self.cache.set(content_hash, analysis.model_dump(mode="json"))
+            self.cache.set(cache_key, analysis.model_dump(mode="json"))
             logger.info("analysis completed: %s#%s", filename, chunk_index)
             return analysis
         except ValidationError as exc:
             raise ChunkAnalysisError(
-                f"LLM trả về analysis không đúng schema cho {filename}#{chunk_index}: {exc}"
+                f"LLM trả về kết quả phân tích sai cấu trúc cho {filename}#{chunk_index}: {exc}"
             ) from exc
         except Exception as exc:
             raise ChunkAnalysisError(
@@ -220,13 +232,13 @@ def build_analysis_stats(analyses: Sequence[ChunkAnalysis]) -> AnalysisStats:
         files_analyzed=len({analysis.filename for analysis in analyses}),
         chunks_analyzed=len(analyses),
         technologies_detected=len(
-            _unique_strings(value for analysis in analyses for value in analysis.technologies)
+            unique_strings(value for analysis in analyses for value in analysis.technologies)
         ),
         modules_detected=len(
-            _unique_strings(value for analysis in analyses for value in analysis.modules)
+            unique_strings(value for analysis in analyses for value in analysis.modules)
         ),
         features_detected=len(
-            _unique_strings(value for analysis in analyses for value in analysis.features)
+            unique_strings(value for analysis in analyses for value in analysis.features)
         ),
     )
 
@@ -252,7 +264,7 @@ def _prepare_payload(
     elif isinstance(raw_payload, Mapping):
         payload = dict(raw_payload)
     else:
-        raise TypeError("Chunk analysis phải là một JSON object.")
+        raise TypeError("Kết quả phân tích đoạn phải là một JSON object.")
 
     # Filename and chunk index are trusted from the pipeline, not from the model.
     payload["filename"] = filename
@@ -270,7 +282,7 @@ def _prepare_payload(
         "limitations",
     )
     for field_name in list_fields:
-        payload[field_name] = _as_string_list(payload.get(field_name, []))
+        payload[field_name] = as_string_list(payload.get(field_name, []))
 
     if not isinstance(payload.get("important_configs"), Mapping):
         payload["important_configs"] = {}
@@ -316,22 +328,9 @@ def _normalize_evidence(value: Any, filename: str) -> list[dict[str, Any]]:
     return normalized
 
 
-def _as_string_list(value: Any) -> list[str]:
-    """Convert a model list field to clean non-empty strings."""
-    if isinstance(value, str):
-        value = [value]
-    if not isinstance(value, (list, tuple, set)):
-        return []
-    return [str(item).strip() for item in value if str(item).strip()]
-
-
 def _as_non_negative_int(value: Any) -> int:
     try:
         integer = int(value)
     except (TypeError, ValueError):
         return 0
     return max(integer, 0)
-
-
-def _unique_strings(values: Any) -> set[str]:
-    return {str(value).strip().casefold() for value in values if str(value).strip()}

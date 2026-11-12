@@ -150,7 +150,7 @@ def _load_raw_file(
             extension=extension,
             size=size,
             status="skipped",
-            error=f"File vượt quá giới hạn {size_limit} bytes.",
+            error=f"Tệp vượt quá giới hạn {size_limit} byte.",
         )
 
     try:
@@ -259,7 +259,7 @@ def _load_zip_file(
                 extension=archive_extension,
                 size=0,
                 status="error",
-                error=f"Cannot read ZIP file: {exc}",
+                error=f"Không thể đọc tệp ZIP: {exc}",
             )
         ]
 
@@ -271,7 +271,7 @@ def _load_zip_file(
                 extension=archive_extension,
                 size=0,
                 status="skipped",
-                error="ZIP file is empty.",
+                error="Tệp ZIP rỗng.",
             )
         ]
     if archive_size > max_archive_size:
@@ -281,7 +281,7 @@ def _load_zip_file(
                 extension=archive_extension,
                 size=archive_size,
                 status="skipped",
-                error=f"ZIP file exceeds the limit of {max_archive_size} bytes.",
+                error=f"Tệp ZIP vượt quá giới hạn {max_archive_size} byte.",
             )
         ]
 
@@ -294,7 +294,7 @@ def _load_zip_file(
                 extension=archive_extension,
                 size=archive_size,
                 status="error",
-                error=f"Invalid ZIP archive: {exc}",
+                error=f"Tệp ZIP không hợp lệ: {exc}",
             )
         ]
 
@@ -309,8 +309,8 @@ def _load_zip_file(
         )
         if len(members) > max_archive_members:
             archive_record["error"] = (
-                f"ZIP contains {len(members)} entries, exceeding the limit of "
-                f"{max_archive_members}."
+                f"Tệp ZIP chứa {len(members)} mục, vượt quá giới hạn "
+                f"{max_archive_members} mục."
             )
             archive_record["status"] = "skipped"
             logger.info("file skipped: %s (%s)", archive_filename, archive_record["error"])
@@ -334,7 +334,7 @@ def _load_zip_file(
                         extension=Path(member.filename).suffix.lower(),
                         size=member.file_size,
                         status="skipped",
-                        error="ZIP entry has an unsafe path.",
+                        error="Mục trong ZIP có đường dẫn không an toàn.",
                     )
                 )
                 continue
@@ -345,7 +345,7 @@ def _load_zip_file(
                         extension=Path(safe_name).suffix.lower(),
                         size=member.file_size,
                         status="skipped",
-                        error="Duplicate ZIP entry name.",
+                        error="Tên mục trong ZIP bị trùng.",
                     )
                 )
                 continue
@@ -363,7 +363,7 @@ def _load_zip_file(
                         extension=extension,
                         size=member.file_size,
                         status="skipped",
-                        error=f"Unsupported ZIP entry extension: {extension or '[none]'}",
+                        error=f"Định dạng mục trong ZIP không được hỗ trợ: {extension or '[không có]'}.",
                     )
                 )
                 continue
@@ -374,7 +374,7 @@ def _load_zip_file(
                         extension=extension,
                         size=member.file_size,
                         status="skipped",
-                        error="Encrypted ZIP entries are not supported.",
+                        error="Không hỗ trợ mục ZIP được mã hóa.",
                     )
                 )
                 continue
@@ -386,7 +386,7 @@ def _load_zip_file(
                         extension=extension,
                         size=member.file_size,
                         status="skipped",
-                        error="ZIP symbolic links are not supported.",
+                        error="Không hỗ trợ liên kết tượng trưng (symlink) trong ZIP.",
                     )
                 )
                 continue
@@ -397,7 +397,7 @@ def _load_zip_file(
                         extension=extension,
                         size=0,
                         status="skipped",
-                        error="ZIP entry is empty.",
+                        error="Mục trong ZIP rỗng.",
                     )
                 )
                 continue
@@ -410,7 +410,7 @@ def _load_zip_file(
                         extension=extension,
                         size=member.file_size,
                         status="skipped",
-                        error=f"ZIP entry exceeds the limit of {size_limit} bytes.",
+                        error=f"Mục trong ZIP vượt quá giới hạn {size_limit} byte.",
                     )
                 )
                 continue
@@ -422,7 +422,7 @@ def _load_zip_file(
                         extension=extension,
                         size=member.file_size,
                         status="skipped",
-                        error="Tổng dung lượng sau giải nén vượt quá giới hạn.",
+                        error="Tổng dung lượng ZIP sau giải nén vượt quá giới hạn.",
                     )
                 )
                 continue
@@ -437,7 +437,7 @@ def _load_zip_file(
                         extension=extension,
                         size=member.file_size,
                         status="error",
-                        error=f"Cannot read ZIP entry: {exc}",
+                        error=f"Không thể đọc mục trong ZIP: {exc}",
                     )
                 )
                 continue
@@ -450,7 +450,7 @@ def _load_zip_file(
                         extension=extension,
                         size=len(raw_entry),
                         status="skipped",
-                        error="ZIP entry exceeds the safe extraction limit.",
+                        error="Mục trong ZIP vượt quá giới hạn giải nén an toàn.",
                     )
                 )
                 continue

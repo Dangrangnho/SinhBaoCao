@@ -8,16 +8,17 @@ from collections.abc import Callable, Sequence
 from typing import Any, Protocol, TypeVar
 
 import httpx
-from openai import OpenAI
+from openai import APIStatusError, OpenAI
 from pydantic import BaseModel
 
 from config import Settings, get_settings
-from utils.json_utils import extract_json
+from utils.json_utils import JSONExtractionError, extract_json
 
 
 logger = logging.getLogger(__name__)
 Message = dict[str, str]
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
+_RETRYABLE_STATUS_CODES = frozenset({408, 409, 429})
 
 _GEMINI_REST_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -70,7 +71,8 @@ class LLMClient:
         else:
             if not self._api_key:
                 raise LLMConfigurationError(
-                    "Không tìm thấy GEMINI_API_KEY (hoặc OPENAI_API_KEY) trong environment hoặc file .env."
+                    "Không tìm thấy GEMINI_API_KEY (hoặc OPENAI_API_KEY) trong biến môi trường "
+                    "hoặc tệp .env."
                 )
             self._client = OpenAI(
                 api_key=self._api_key,
@@ -114,10 +116,13 @@ class LLMClient:
                     temperature=selected_temperature,
                 )
                 if not content:
-                    raise LLMClientError("LLM trả về response rỗng.")
+                    raise LLMClientError("LLM trả về phản hồi rỗng.")
                 return content
             except Exception as exc:  # SDK exceptions vary across compatible APIs.
                 last_error = exc
+                if not _is_retryable(exc):
+                    logger.warning("LLM request failed with a non-retryable error.")
+                    break
                 if attempt >= self.settings.max_retries:
                     break
                 delay = min(2**attempt, 8)
@@ -129,7 +134,7 @@ class LLMClient:
                 )
                 self._sleep(delay)
 
-        raise LLMClientError(f"LLM request thất bại: {last_error}") from last_error
+        raise LLMClientError(f"Gọi LLM thất bại: {last_error}") from last_error
 
     def _request_completion(
         self,
@@ -224,14 +229,33 @@ class LLMClient:
         model: str | None = None,
         schema: type[SchemaT] | None = None,
     ) -> Any:
-        """Generate a response, extract JSON, and optionally validate a schema."""
-        response = self.generate_text(
-            messages,
-            temperature=temperature,
-            model=model,
-        )
-        payload = extract_json(response)
-        return schema.model_validate(payload) if schema is not None else payload
+        """Generate a response, extract JSON, and optionally validate a schema.
+
+        A response that arrives but contains no valid JSON is requested again, up
+        to ``max_retries`` extra times. Transport errors are already retried by
+        :meth:`generate_text` and are not retried a second time here.
+        """
+        last_error: JSONExtractionError | None = None
+        for attempt in range(self.settings.max_retries + 1):
+            response = self.generate_text(
+                messages,
+                temperature=temperature,
+                model=model,
+            )
+            try:
+                payload = extract_json(response)
+            except JSONExtractionError as exc:
+                last_error = exc
+                logger.warning(
+                    "LLM response contained no valid JSON on attempt %s/%s.",
+                    attempt + 1,
+                    self.settings.max_retries + 1,
+                )
+                continue
+            return schema.model_validate(payload) if schema is not None else payload
+
+        assert last_error is not None
+        raise last_error
 
 
 class MockLLMClient:
@@ -327,7 +351,7 @@ def _call_google_generate_content(
     data = response.json()
     candidates = data.get("candidates") or []
     if not candidates:
-        raise LLMClientError(f"Gemini response không có candidates: {data}")
+        raise LLMClientError(f"Phản hồi từ Gemini không có kết quả (candidates): {data}")
     parts = candidates[0].get("content", {}).get("parts") or []
     text_parts = [
         str(part.get("text", ""))
@@ -337,6 +361,21 @@ def _call_google_generate_content(
     if not text_parts:
         text_parts = [str(part.get("text", "")) for part in parts if "text" in part]
     return "".join(text_parts)
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """Return False for client errors that a retry cannot fix (auth, bad request).
+
+    Covers both the OpenAI-compatible SDK and the Gemini/Vertex REST fallback.
+    """
+    status: int | None = None
+    if isinstance(exc, APIStatusError):
+        status = exc.status_code
+    elif isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+    if status is None:
+        return True
+    return status in _RETRYABLE_STATUS_CODES or status >= 500
 
 
 def _dump_json(value: Any) -> str:

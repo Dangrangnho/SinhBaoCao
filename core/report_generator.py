@@ -12,9 +12,9 @@ from typing import Any
 from config import Settings, get_settings
 from llm.llm_client import LLMClient, LLMClientError
 from models.project_schema import ProjectKnowledge
+from utils.text_utils import NOT_ENOUGH_DATA
 
 
-NOT_ENOUGH_DATA = "Không đủ dữ liệu để xác định."
 REPORT_HEADINGS = (
     "## CHƯƠNG 1: TỔNG QUAN VÀ MỤC TIÊU",
     "## CHƯƠNG 2: CƠ SỞ LÝ THUYẾT VÀ CÔNG NGHỆ SỬ DỤNG",

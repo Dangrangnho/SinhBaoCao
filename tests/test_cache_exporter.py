@@ -52,3 +52,17 @@ def test_exporter_uses_required_filename_and_utf8(tmp_path) -> None:
     path = export_markdown(report, "Demo Project", tmp_path)
     assert path.name == "technical_report_demo_project.md"
     assert path.read_text(encoding="utf-8") == report
+
+
+def test_cache_is_not_reused_after_prompt_changes(tmp_path) -> None:
+    response = {"purpose": "Entry point", "technologies": ["Python"]}
+    client = MockLLMClient([response, response])
+    cache = ContentCache(tmp_path / "cache")
+    changed_prompt = tmp_path / "prompt.txt"
+    changed_prompt.write_text("New prompt {{CONTENT}}", encoding="utf-8")
+    chunk = {"filename": "main.py", "chunk_index": 0, "content": "print(1)"}
+
+    ChunkAnalyzer(client, cache=cache).analyze_chunk(chunk)
+    ChunkAnalyzer(client, prompt_path=changed_prompt, cache=cache).analyze_chunk(chunk)
+
+    assert len(client.calls) == 2

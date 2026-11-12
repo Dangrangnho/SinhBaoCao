@@ -28,6 +28,17 @@ def configure_logging(log_path: Path | str | None = None) -> None:
         )
         root_logger.addHandler(handler)
         root_logger.setLevel(logging.INFO)
+        _silence_http_request_logs()
     except OSError:
         # Logging must never prevent the application from starting.
         return
+
+
+def _silence_http_request_logs() -> None:
+    """Keep HTTP client request lines (full URLs) out of the log file.
+
+    httpx logs every request URL at INFO. The Gemini REST fallback sends the API
+    key as a ``?key=`` query parameter, so those lines would write the key to disk.
+    """
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(logging.WARNING)
