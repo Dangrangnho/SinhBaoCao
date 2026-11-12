@@ -23,7 +23,11 @@ Các điểm cần khắc phục ưu tiên cao:
 | 4 | Bước reduce đưa toàn bộ chunk analyses vào **một** prompt duy nhất → rủi ro vượt context window với dự án lớn | [core/knowledge_builder.py:77-94](../core/knowledge_builder.py#L77-L94) | Trung bình |
 | 5 | Khoá cache chỉ dựa trên SHA-256 nội dung, không gồm model/prompt version → cache "cũ" sau khi đổi prompt hoặc model | [core/analyzer.py:79-80](../core/analyzer.py#L79-L80) | Trung bình |
 
-> **Cập nhật sau đánh giá:** Các mục 1, 2, 3 và 5 trong bảng trên, cùng 7 khiếm khuyết khác ở mục 4.2.2, đã được khắc phục và bổ sung test hồi quy. Mục 4 (reduce một lần) thuộc phạm vi thay đổi kiến trúc nên chưa xử lý. Chi tiết xem **PHỤ LỤC A**. Chương 1–5 được giữ nguyên để phản ánh trạng thái mã nguồn tại commit `7ab8f1f`; các tham chiếu số dòng trong các chương này ứng với phiên bản đó.
+> **Cập nhật sau đánh giá:** Các mục 1, 2, 3 và 5 trong bảng trên, cùng 7 khiếm khuyết khác ở mục 4.2.2, đã được khắc phục và bổ sung test hồi quy. Mục 4 (reduce một lần) thuộc phạm vi thay đổi kiến trúc nên chưa xử lý. Chi tiết xem **PHỤ LỤC A**.
+>
+> Các bản sửa sau đó được gộp lên commit `45189dc` (chuyển sang Gemini API, xuất DOCX/PDF, phân tích song song). Commit này làm một số nhận định trong Chương 2 và Chương 4 không còn đúng, đồng thời phát sinh một lỗi bảo mật mới (API key bị ghi vào log, đã khắc phục). Đối chiếu đầy đủ xem **PHỤ LỤC B**.
+>
+> Chương 1–5 được giữ nguyên để phản ánh trạng thái mã nguồn tại commit `7ab8f1f`; các tham chiếu số dòng trong các chương này ứng với phiên bản đó.
 
 ---
 
@@ -450,7 +454,7 @@ Lợi ích: chunk mang ngữ nghĩa trọn vẹn; trường `symbol` cung cấp 
 
 ### A.1. Tổng quan
 
-Sau đánh giá, 11 trong 13 khiếm khuyết liệt kê ở mục 4.2.2 đã được khắc phục. Mỗi bản sửa đi kèm ít nhất một test hồi quy. Bộ kiểm thử tăng từ **35 lên 49 test, toàn bộ đạt**. Giao diện được kiểm tra khói (smoke test) bằng `streamlit.testing.v1.AppTest`: khởi động không phát sinh exception và nhánh xử lý lỗi phân tích hoạt động đúng.
+Sau đánh giá, 11 trong 13 khiếm khuyết liệt kê ở mục 4.2.2 đã được khắc phục. Mỗi bản sửa đi kèm ít nhất một test hồi quy. Sau khi gộp với commit `45189dc` và bổ sung bản sửa ở Phụ lục B, bộ kiểm thử có **53 test, toàn bộ đạt** (35 test gốc, 3 test từ commit `45189dc`, 15 test hồi quy mới). Giao diện được kiểm tra khói (smoke test) bằng `streamlit.testing.v1.AppTest`: khởi động không phát sinh exception và nhánh xử lý lỗi phân tích hoạt động đúng.
 
 ### A.2. Bảng đối chiếu khắc phục
 
@@ -458,7 +462,7 @@ Sau đánh giá, 11 trong 13 khiếm khuyết liệt kê ở mục 4.2.2 đã đ
 |:---------:|--------------|:----------:|----------------|--------------|
 | 1 | `MAX_CHUNKS` không được áp dụng | ✅ | `analyze_project` ném `PipelineError` khi số chunk vượt `MAX_CHUNKS`, **trước** mọi lời gọi LLM | `test_pipeline_limits.py` |
 | 2 | Kiểm tra feature đánh giá knowledge thay vì report | ✅ | Loại khỏi validator report; tách thành hàm công khai `find_features_without_evidence()`, hiển thị dạng cảnh báo tại Step 4 | `test_empty_report_has_no_feature_issue_from_knowledge_alone` |
-| 3 | Dương tính giả với "người dùng" | ✅ | Negative lookbehind cho "người dùng"/"người sử dụng"; chỉ coi là tên công nghệ/module khi cụm từ có dạng định danh (xem A.3); kiểm tra feature chỉ áp dụng cho dạng liệt kê `Tính năng: A, B` | `test_vietnamese_prose_does_not_create_false_positives`, `test_unknown_technology_after_prose_is_still_detected` |
+| 3 | Dương tính giả với "người dùng" | ✅ | Công nghệ và chức năng chỉ được kiểm tra trên **dòng nhãn** (`Công nghệ sử dụng: A, B`, `Tính năng: A, B`); module chỉ được bắt ở dạng tên riêng `X Module`. Cách tiếp cận này đến từ commit `45189dc` và thay thế heuristic ban đầu của bản sửa (xem A.3, B.3) | `test_vietnamese_prose_does_not_create_false_positives`, `test_unknown_technology_in_label_line_is_detected`, `test_code_validator_does_not_false_flag_normal_vietnamese_prose` |
 | 4 | Miễn trừ `[source:` không kiểm tra file tồn tại | ✅ | Thêm `_check_source_references`: mọi thẻ `[source: X]` được đối chiếu với `knowledge.source_files` (chấp nhận khớp đầy đủ hoặc hậu tố đường dẫn, ví dụ `auth.py` ↔ `demo.zip::src/auth.py`); kiểm tra số liệu chỉ được miễn khi **mọi** thẻ trên dòng đều hợp lệ | `test_fake_source_tag_does_not_bypass_metric_check`, `test_metric_with_known_source_tag_is_accepted` |
 | 5 | LLM validator lỗi → toàn bộ validation lỗi | ✅ | `validate()` trả kết quả deterministic kèm issue `medium`; `validate_and_revise()` giữ nguyên báo cáo khi bước revise thất bại | `test_llm_validator_failure_falls_back_to_deterministic_result`, `test_revision_failure_keeps_current_report` |
 | 6 | Retry mọi exception, kể cả 401/400 | ✅ | `_is_retryable()`: không retry `APIStatusError` 4xx, trừ 408/409/429 | `test_authentication_error_is_not_retried`, `test_rate_limit_error_is_retried` |
@@ -472,21 +476,21 @@ Sau đánh giá, 11 trong 13 khiếm khuyết liệt kê ở mục 4.2.2 đã đ
 
 ### A.3. Kết quả thực nghiệm lặp lại trên validator
 
-Các trường hợp ở mục 3.2.2 được chạy lại sau khi sửa:
+Các trường hợp ở mục 3.2.2 được chạy lại trên mã nguồn sau khi gộp (cùng knowledge với mục 3.2.2, `source_files = ["demo.zip::src/auth.py", "app.py"]`):
 
-| Đầu vào | Trước khắc phục | Sau khắc phục |
+| Đầu vào | Trước khắc phục (`7ab8f1f`) | Sau khắc phục |
 |---------|-----------------|---------------|
 | Report rỗng, knowledge có 2 feature | 2 issue `high` | 0 issue (cảnh báo chuyển sang Step 4) |
 | "Người dùng có thể dùng giao diện web để tải lên tài liệu." | 2 issue `high` | 0 issue |
 | "Module xử lý dữ liệu đọc file đầu vào." | 1 issue `high` | 0 issue |
 | "Hệ thống có chức năng tải file lên." | 1 issue `high` | 0 issue |
-| "Hệ thống dùng Rust để xử lý dữ liệu." (Rust không có trong knowledge) | Issue với cụm dài `Rust để xử lý dữ liệu` | 1 issue `high`: `Rust` |
+| "Công nghệ sử dụng: Python, Rust" (Rust không có trong knowledge) | 1 issue `high`: `Rust` | 1 issue `high`: `Rust` |
+| "Hệ thống dùng Rust để xử lý dữ liệu." | Issue với cụm dài `Rust để xử lý dữ liệu` | 0 issue (chuyển cho LLM validator) |
+| "Độ chính xác đạt 99%." | 1 issue `high` | 1 issue `high` |
 | "Độ chính xác đạt 99% [source: fake.py]" | 0 issue | 2 issue `high` (source không tồn tại + số liệu không có nguồn) |
-| "Thời gian xử lý đạt 120 ms [source: auth.py]" (file có thật) | 0 issue | 0 issue |
+| "Thời gian phản hồi đạt 120 ms [source: auth.py]" (file có thật) | 0 issue | 0 issue |
 
-**Quy tắc nhận diện định danh** dùng cho công nghệ và module: lấy tối đa 3 từ đầu tiên của cụm ứng viên, mỗi từ phải là ký tự ASCII và có chữ hoa, chữ số hoặc một trong các ký tự `_ . + # / -` (ví dụ `Python`, `Node.js`, `C++`, `core/analyzer.py`). Văn xuôi tiếng Việt có nhiều âm tiết ASCII viết thường (`giao`, `web`, `file`) nên bị loại.
-
-**Đánh đổi:** tên công nghệ viết thường hoàn toàn (ví dụ `pytest`, `numpy`) không còn bị bắt bằng regex. Trường hợp này được giao cho LLM validator.
+**Đánh đổi của cách kiểm tra theo dòng nhãn:** tầng deterministic gần như không còn dương tính giả trên văn xuôi, nhưng công nghệ hoặc module lạ được nhắc trong câu văn thường (không ở dòng nhãn, không theo dạng `X Module`) sẽ không bị regex phát hiện. Trường hợp này do LLM validator đảm nhận. Kiểm tra số liệu và thẻ `[source:]` vẫn áp dụng trên mọi dòng văn xuôi.
 
 ### A.4. Thay đổi hành vi cần lưu ý khi triển khai
 
@@ -501,4 +505,46 @@ Các trường hợp ở mục 3.2.2 được chạy lại sau khi sửa:
 
 ---
 
-*Báo cáo được lập dựa trên phân tích tĩnh mã nguồn, kết quả chạy `pytest` (35/35 đạt trước khắc phục, 49/49 đạt sau khắc phục) và thực nghiệm trực tiếp trên các hàm validator. Các nhận định về hiệu năng (thời gian xử lý, số chunk tối đa) là ước tính tính toán từ cấu hình mặc định, chưa được đo trên tải thực tế.*
+## PHỤ LỤC B: ĐỐI CHIẾU VỚI COMMIT `45189dc`
+
+### B.1. Bối cảnh
+
+Trong thời gian đánh giá, nhánh `main` nhận thêm commit `45189dc` *"switch to Gemini API, add DOCX/PDF export, parallel chunk analysis, and detailed report prompts"* (15 file, +815/−119 dòng). Các bản sửa ở Phụ lục A được rebase lên commit này. Sáu file có xung đột (`app.py`, `core/knowledge_builder.py`, `core/validator.py`, `llm/llm_client.py` và hai file test) và đã được giải quyết theo nguyên tắc giữ chức năng của cả hai phía.
+
+### B.2. Nhận định trong Chương 1–5 không còn đúng
+
+| Vị trí | Nhận định tại `7ab8f1f` | Trạng thái sau `45189dc` |
+|--------|-------------------------|--------------------------|
+| 2.1 (`llm_client.py`), 4.2.1 | Chỉ có client OpenAI-compatible; Gemini chỉ dùng qua endpoint tương thích | Mặc định dùng Gemini (`GEMINI_API_KEY`, `GEMINI_MODEL`). Khi gọi qua SDK OpenAI-compatible thất bại, hoặc khi key có dạng `AQ.*`, client gọi trực tiếp REST `generateContent` của Gemini / Vertex AI Express, có danh sách model dự phòng |
+| 2.1 (`analyzer.py`), 4.2.1 | Phân tích chunk tuần tự | Phân tích song song bằng `ThreadPoolExecutor` (tối đa 4 luồng), giữ nguyên thứ tự kết quả |
+| 4.2.1, 5.2 (Giai đoạn 3) | Chỉ xuất Markdown | Xuất được Word (`docx_bytes`, font Times New Roman 13pt) và PDF (`pdf_bytes`, qua PyMuPDF). Đã kiểm tra văn bản tiếng Việt có dấu được giữ nguyên trong PDF |
+| 2.2.2 | Mọi entry ZIP hợp lệ đều được nạp | Bỏ qua các thư mục `.git`, `node_modules`, `__pycache__`, `.venv`, `build`, `dist`… trong ZIP; hỗ trợ thêm định dạng `.kts` |
+| 3.1.2 (mục 3–4) | Mô tả module lấy từ `purpose` của chunk đầu tiên; evidence gán bằng so khớp chuỗi con | Mô tả module ghép từ mô tả của bước reduce (LLM) và `purpose`/classes/functions của các chunk; module nhận **toàn bộ** evidence của chunk chứa nó. `configuration` có thêm khoá `file_details` tóm tắt từng file |
+| 3.2.2 | Heuristic công nghệ quét mọi câu chứa "dùng", "sử dụng"… | Chỉ quét dòng nhãn (xem A.3) |
+
+### B.3. Cách giải quyết xung đột
+
+| File | Phía `45189dc` được giữ | Phía bản sửa được giữ |
+|------|-------------------------|------------------------|
+| `core/validator.py` | Regex dòng nhãn `_TECH_LABEL_RE`, `_FEATURE_LABEL_RE`; regex module `X Module`; regex số liệu thu hẹp | Bỏ kiểm tra feature chỉ dựa trên knowledge (bản `45189dc` vẫn còn một biến thể khi knowledge không có evidence nào); xác minh thẻ `[source:]`; fallback khi LLM validator/revise lỗi; thông báo tiếng Việt. Heuristic "định danh" ban đầu của bản sửa bị loại vì trùng mục đích |
+| `llm/llm_client.py` | Toàn bộ luồng Gemini REST / Vertex Express | `_is_retryable()` mở rộng cho cả `httpx.HTTPStatusError`; retry khi phản hồi không có JSON |
+| `core/knowledge_builder.py` | Mô tả module mở rộng, `file_details` | Không ghi đè cấu hình trùng khoá; helper dùng chung từ `utils/text_utils.py` |
+| `app.py` | Nút tải DOCX/PDF/Markdown ở Bước 5 và Bước 6 | Giao diện tiếng Việt, xoá trạng thái cũ khi phân tích lỗi, cảnh báo chức năng thiếu evidence |
+
+### B.4. Phát hiện mới trong mã nguồn `45189dc`
+
+| # | Vấn đề | Vị trí | Mức độ | Trạng thái |
+|---|--------|--------|:------:|:----------:|
+| 1 | **API key bị ghi vào file log.** Luồng REST gửi key qua query string (`params={"key": api_key}`). Thư viện `httpx` ghi URL đầy đủ của mọi request ở mức INFO, và `configure_logging()` đặt root logger ở INFO, ghi ra `data/outputs/app.log`. Đã tái hiện bằng thực nghiệm: chuỗi key xuất hiện nguyên văn trong log | `llm/llm_client.py` (`_call_google_generate_content`), `utils/logging_config.py` | Cao | ✅ Đã khắc phục: hạ logger `httpx`/`httpcore` xuống WARNING; test `test_http_request_urls_with_api_key_are_not_logged` |
+| 2 | Mọi exception của lời gọi SDK (kể cả 401 do sai key) đều kích hoạt fallback REST. Mỗi lần thử có thể phát sinh tới 3 model × 2 endpoint = 6 request, nhân với số lần retry | `LLMClient._request_completion` | Trung bình | ⚠️ Giảm nhẹ: lỗi 4xx cuối cùng không còn bị retry ở vòng ngoài. Chưa giới hạn số request trong fallback |
+| 3 | Fallback sang model dự phòng diễn ra âm thầm. Khoá cache dùng model đã cấu hình, nên kết quả từ model dự phòng được lưu dưới namespace của model chính | `_call_gemini_rest_with_fallback`, `ChunkAnalyzer` | Thấp | Chưa xử lý |
+| 4 | Mô tả module nhận văn bản tự do từ bước reduce (LLM) và module nhận toàn bộ evidence của chunk. Điều này mở rộng phạm vi của khiếm khuyết #9 (văn bản không bị ràng buộc evidence) và làm giảm độ chính xác của liên kết module–evidence | `_merge_modules` | Trung bình | Chưa xử lý |
+| 5 | Chế độ song song được tắt bằng cách kiểm tra `hasattr(llm_client, "calls")` (nhận diện `MockLLMClient`); số luồng cố định 4, không cấu hình được | `ChunkAnalyzer.analyze_chunks` | Thấp | Chưa xử lý |
+| 6 | File trong thư mục bị bỏ qua của ZIP không xuất hiện trong bảng trạng thái, người dùng không biết file nào đã bị loại | `_load_zip_file` | Thấp | Chưa xử lý |
+| 7 | `load_dotenv(override=True)`: giá trị trong `.env` ghi đè biến môi trường thật, trái với quy ước thông thường khi triển khai | `config.py` | Thấp | Chưa xử lý |
+
+**Khuyến nghị cho mục 1:** Ngoài bản sửa ghi log, nên chuyển key từ query string sang header `x-goog-api-key` để key không xuất hiện trong URL ở bất kỳ tầng nào (proxy, log máy chủ trung gian). Thay đổi này cần kiểm tra với cả endpoint Gemini và Vertex AI Express trước khi áp dụng. Nếu từng chạy phiên bản `45189dc` với cấu hình log mặc định, nên kiểm tra `data/outputs/app.log*` và thu hồi (rotate) key nếu có rò rỉ.
+
+---
+
+*Báo cáo được lập dựa trên phân tích tĩnh mã nguồn, kết quả chạy `pytest` (35/35 đạt trước khắc phục, 53/53 đạt sau khắc phục và gộp với `45189dc`) và thực nghiệm trực tiếp trên các hàm validator. Các nhận định về hiệu năng (thời gian xử lý, số chunk tối đa) là ước tính tính toán từ cấu hình mặc định, chưa được đo trên tải thực tế.*
