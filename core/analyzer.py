@@ -86,7 +86,7 @@ class ChunkAnalyzer:
         chunk_index = _as_non_negative_int(chunk.get("chunk_index", 0))
         content = str(chunk.get("content", ""))
         if not content.strip():
-            raise ChunkAnalysisError(f"Chunk rỗng: {filename}#{chunk_index}.")
+            raise ChunkAnalysisError(f"Đoạn nội dung rỗng: {filename}#{chunk_index}.")
 
         content_hash = str(chunk.get("content_sha256") or sha256_content(content))
         cache_key = sha256_content(f"{self._cache_namespace}:{content_hash}")
@@ -132,7 +132,7 @@ class ChunkAnalyzer:
             return analysis
         except ValidationError as exc:
             raise ChunkAnalysisError(
-                f"LLM trả về analysis không đúng schema cho {filename}#{chunk_index}: {exc}"
+                f"LLM trả về kết quả phân tích sai cấu trúc cho {filename}#{chunk_index}: {exc}"
             ) from exc
         except Exception as exc:
             raise ChunkAnalysisError(
@@ -264,7 +264,7 @@ def _prepare_payload(
     elif isinstance(raw_payload, Mapping):
         payload = dict(raw_payload)
     else:
-        raise TypeError("Chunk analysis phải là một JSON object.")
+        raise TypeError("Kết quả phân tích đoạn phải là một JSON object.")
 
     # Filename and chunk index are trusted from the pipeline, not from the model.
     payload["filename"] = filename

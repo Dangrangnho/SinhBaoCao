@@ -49,7 +49,7 @@ def test_code_validator_detects_technology_feature_module_and_metric_issues() ->
 
     assert not result.valid
     assert "Công nghệ" in reasons
-    assert "Feature" in reasons
+    assert "Chức năng" in reasons
     assert "Module" in reasons
     assert "Số liệu" in reasons
 
@@ -169,7 +169,7 @@ def test_fake_source_tag_does_not_bypass_metric_check() -> None:
 
     reasons = " ".join(issue.reason for issue in validator.validate_code(report, _knowledge()).issues)
 
-    assert "Tham chiếu source" in reasons
+    assert "Tệp nguồn được trích dẫn" in reasons
     assert "Số liệu" in reasons
 
 
@@ -187,7 +187,7 @@ def test_llm_validator_failure_falls_back_to_deterministic_result() -> None:
     result = validator.validate(_report(), _knowledge())
 
     assert [issue.severity for issue in result.issues] == ["medium"]
-    assert "LLM validator" in result.issues[0].reason
+    assert "kiểm tra bằng LLM" in result.issues[0].reason
 
 
 def test_revision_failure_keeps_current_report() -> None:
@@ -199,4 +199,4 @@ def test_revision_failure_keeps_current_report() -> None:
 
     assert run.report == original
     assert run.revision_count == 1
-    assert any("Không revise được" in issue.reason for issue in run.validation_result.issues)
+    assert any("Không chỉnh sửa được" in issue.reason for issue in run.validation_result.issues)

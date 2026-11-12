@@ -71,7 +71,8 @@ class LLMClient:
         else:
             if not self._api_key:
                 raise LLMConfigurationError(
-                    "Không tìm thấy GEMINI_API_KEY (hoặc OPENAI_API_KEY) trong environment hoặc file .env."
+                    "Không tìm thấy GEMINI_API_KEY (hoặc OPENAI_API_KEY) trong biến môi trường "
+                    "hoặc tệp .env."
                 )
             self._client = OpenAI(
                 api_key=self._api_key,
@@ -115,7 +116,7 @@ class LLMClient:
                     temperature=selected_temperature,
                 )
                 if not content:
-                    raise LLMClientError("LLM trả về response rỗng.")
+                    raise LLMClientError("LLM trả về phản hồi rỗng.")
                 return content
             except Exception as exc:  # SDK exceptions vary across compatible APIs.
                 last_error = exc
@@ -133,7 +134,7 @@ class LLMClient:
                 )
                 self._sleep(delay)
 
-        raise LLMClientError(f"LLM request thất bại: {last_error}") from last_error
+        raise LLMClientError(f"Gọi LLM thất bại: {last_error}") from last_error
 
     def _request_completion(
         self,
@@ -350,7 +351,7 @@ def _call_google_generate_content(
     data = response.json()
     candidates = data.get("candidates") or []
     if not candidates:
-        raise LLMClientError(f"Gemini response không có candidates: {data}")
+        raise LLMClientError(f"Phản hồi từ Gemini không có kết quả (candidates): {data}")
     parts = candidates[0].get("content", {}).get("parts") or []
     text_parts = [
         str(part.get("text", ""))

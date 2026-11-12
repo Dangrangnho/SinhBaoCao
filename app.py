@@ -48,6 +48,13 @@ SUPPORTED_UPLOAD_TYPES = [
     "docx",
     "zip",
 ]
+_FILE_STATUS_LABELS = {
+    "loaded": "Đã đọc",
+    "skipped": "Bỏ qua",
+    "error": "Lỗi",
+    "expanded": "Đã giải nén",
+}
+_SEVERITY_LABELS = {"low": "Thấp", "medium": "Trung bình", "high": "Cao"}
 
 
 def main() -> None:
@@ -55,13 +62,16 @@ def main() -> None:
     configure_logging()
     _initialize_session_state()
     st.set_page_config(
-        page_title="AI Technical Report Generator",
+        page_title="Sinh báo cáo kỹ thuật bằng AI",
         page_icon="📄",
         layout="wide",
     )
 
-    st.title("AI Technical Report Generator")
-    st.caption("Phân tích source code và tài liệu theo pipeline có human review.")
+    st.title("Sinh báo cáo kỹ thuật bằng AI")
+    st.caption(
+        "Phân tích mã nguồn và tài liệu theo quy trình nhiều bước, "
+        "có bước người dùng kiểm duyệt."
+    )
 
     _render_project_information()
     _render_file_upload()
@@ -93,24 +103,24 @@ def _initialize_session_state() -> None:
 
 
 def _render_project_information() -> None:
-    st.subheader("Step 1 — Project Information")
+    st.subheader("Bước 1 — Thông tin đề tài")
     first_column, second_column = st.columns(2)
     with first_column:
-        st.text_input("Project Title", key="project_title")
-        st.text_input("Subject Name", key="subject_name")
+        st.text_input("Tên đề tài", key="project_title")
+        st.text_input("Môn học", key="subject_name")
     with second_column:
-        st.text_area("Technology Stack", key="technology_stack", height=100)
-        st.text_area("Additional Notes", key="additional_notes", height=100)
+        st.text_area("Công nghệ sử dụng", key="technology_stack", height=100)
+        st.text_area("Ghi chú thêm", key="additional_notes", height=100)
 
 
 def _render_file_upload() -> None:
-    st.subheader("Step 2 — Upload Files")
+    st.subheader("Bước 2 — Tải lên tệp")
     uploaded = st.file_uploader(
-        "Upload source code và tài liệu liên quan",
+        "Tải lên mã nguồn và tài liệu liên quan",
         type=SUPPORTED_UPLOAD_TYPES,
         accept_multiple_files=True,
         key="file_uploader",
-        help="File sẽ được đọc và xử lý cục bộ trước khi gửi từng chunk tới LLM.",
+        help="Tệp được đọc và xử lý trên máy trước khi gửi từng đoạn nội dung tới LLM.",
     )
 
     # The keyed uploader keeps its files across reruns, so an empty list means the
@@ -126,16 +136,16 @@ def _render_file_upload() -> None:
 
     files = st.session_state.uploaded_files
     if not files:
-        st.info("Chưa có file nào được upload.")
+        st.info("Chưa có tệp nào được tải lên.")
         return
 
-    st.write(f"Đã chọn {len(files)} file.")
+    st.write(f"Đã chọn {len(files)} tệp.")
     st.dataframe(
         [
             {
-                "Filename": file["filename"],
-                "Size (bytes)": file.get("size", len(file.get("content", b""))),
-                "Extension": _extension(file["filename"]),
+                "Tên tệp": file["filename"],
+                "Kích thước (byte)": file.get("size", len(file.get("content", b""))),
+                "Định dạng": _extension(file["filename"]),
             }
             for file in files
         ],
@@ -145,12 +155,12 @@ def _render_file_upload() -> None:
 
 
 def _render_analyze_step() -> None:
-    st.subheader("Step 3 — Analyze Project")
+    st.subheader("Bước 3 — Phân tích dự án")
     analyze_column, reanalyze_column = st.columns([1, 1])
     with analyze_column:
-        analyze_clicked = st.button("Analyze Project", type="primary", use_container_width=True)
+        analyze_clicked = st.button("Phân tích dự án", type="primary", use_container_width=True)
     with reanalyze_column:
-        reanalyze_clicked = st.button("Re-analyze Project", use_container_width=True)
+        reanalyze_clicked = st.button("Phân tích lại", use_container_width=True)
 
     if analyze_clicked or reanalyze_clicked:
         _run_analysis()
@@ -199,7 +209,7 @@ def _run_analysis() -> None:
     st.session_state.validation_result = None
     st.session_state.analysis_error = None
     st.session_state.knowledge_version += 1
-    status.success("Analysis completed.")
+    status.success("Phân tích hoàn tất.")
     progress.progress(1.0)
 
 
@@ -223,15 +233,15 @@ def _render_analysis_results() -> None:
 
     file_results = st.session_state.file_results
     if file_results:
-        st.subheader("File Processing Status")
+        st.subheader("Trạng thái xử lý tệp")
         st.dataframe(
             [
                 {
-                    "Filename": result["filename"],
-                    "Size (bytes)": result["size"],
-                    "Extension": result["extension"],
-                    "Status": result["status"],
-                    "Error": result["error"] or "",
+                    "Tên tệp": result["filename"],
+                    "Kích thước (byte)": result["size"],
+                    "Định dạng": result["extension"],
+                    "Trạng thái": _FILE_STATUS_LABELS.get(result["status"], result["status"]),
+                    "Ghi chú": result["error"] or "",
                 }
                 for result in file_results
             ],
@@ -240,35 +250,35 @@ def _render_analysis_results() -> None:
         )
 
     if st.session_state.analysis_errors:
-        with st.expander("Chunk analysis errors", expanded=False):
+        with st.expander("Lỗi khi phân tích từng đoạn", expanded=False):
             st.json(st.session_state.analysis_errors)
 
     stats = st.session_state.analysis_stats
     if stats:
-        st.subheader("Analysis Metrics")
+        st.subheader("Thống kê phân tích")
         columns = st.columns(5)
         metrics = [
-            ("Files analyzed", stats.get("files_analyzed", 0)),
-            ("Chunks analyzed", stats.get("chunks_analyzed", 0)),
-            ("Technologies", stats.get("technologies_detected", 0)),
-            ("Modules", stats.get("modules_detected", 0)),
-            ("Features", stats.get("features_detected", 0)),
+            ("Tệp đã phân tích", stats.get("files_analyzed", 0)),
+            ("Đoạn đã phân tích", stats.get("chunks_analyzed", 0)),
+            ("Công nghệ", stats.get("technologies_detected", 0)),
+            ("Module", stats.get("modules_detected", 0)),
+            ("Chức năng", stats.get("features_detected", 0)),
         ]
         for column, (label, value) in zip(columns, metrics):
             column.metric(label, value)
 
 
 def _render_knowledge_review() -> None:
-    st.subheader("Step 4 — Review Project Knowledge")
+    st.subheader("Bước 4 — Kiểm duyệt tri thức dự án")
     knowledge_data = st.session_state.project_knowledge
     if not knowledge_data:
-        st.info("Project Knowledge sẽ xuất hiện sau khi Analyze Project hoàn tất.")
+        st.info("Tri thức dự án sẽ xuất hiện sau khi phân tích hoàn tất.")
         return
 
     try:
         knowledge = ProjectKnowledge.model_validate(knowledge_data)
     except ValidationError as exc:
-        st.error(f"Project Knowledge hiện tại không hợp lệ: {exc}")
+        st.error(f"Tri thức dự án hiện tại không hợp lệ: {exc}")
         return
 
     st.write("Thông tin do hệ thống tổng hợp:")
@@ -277,37 +287,37 @@ def _render_knowledge_review() -> None:
     unsupported_features = find_features_without_evidence(knowledge)
     if unsupported_features:
         st.warning(
-            "Các feature sau chưa được evidence nào nhắc tới, nên kiểm tra lại "
+            "Các chức năng sau chưa có bằng chứng (evidence) nào nhắc tới, nên kiểm tra lại "
             "trước khi sinh báo cáo: " + ", ".join(unsupported_features)
         )
 
     editor_key = f"knowledge_editor_{st.session_state.knowledge_version}"
     edited_json = st.text_area(
-        "Chỉnh sửa Project Knowledge JSON",
+        "Chỉnh sửa tri thức dự án (JSON)",
         value=json.dumps(knowledge.model_dump(mode="json"), ensure_ascii=False, indent=2),
         height=500,
         key=editor_key,
     )
-    if st.button("Validate and Save Project Knowledge", key="save_knowledge"):
+    if st.button("Kiểm tra và lưu tri thức dự án", key="save_knowledge"):
         _save_edited_knowledge(edited_json)
 
     if st.session_state.chunk_analysis:
-        with st.expander("Xem chunk analysis JSON", expanded=False):
+        with st.expander("Xem kết quả phân tích từng đoạn (JSON)", expanded=False):
             st.json(st.session_state.chunk_analysis)
 
     st.caption(
-        "Bước sinh báo cáo sẽ sử dụng Project Knowledge đã được người dùng kiểm tra và lưu."
+        "Bước sinh báo cáo sẽ sử dụng tri thức dự án đã được người dùng kiểm tra và lưu."
     )
 
 
 def _render_report_step() -> None:
     """Render report generation and the two requested Markdown views."""
-    st.subheader("Step 5 — Generate Report")
+    st.subheader("Bước 5 — Sinh báo cáo")
     if not st.session_state.project_knowledge:
-        st.info("Hãy phân tích project và review Project Knowledge trước.")
+        st.info("Hãy phân tích dự án và kiểm duyệt tri thức dự án trước.")
         return
 
-    if st.button("Generate Report", type="primary", use_container_width=True):
+    if st.button("Sinh báo cáo", type="primary", use_container_width=True):
         try:
             generated = generate_report(
                 st.session_state.project_knowledge,
@@ -321,17 +331,17 @@ def _render_report_step() -> None:
         except ReportGenerationError as exc:
             st.error(str(exc))
         except ValidationError as exc:
-            st.error(f"Project Knowledge không hợp lệ: {exc}")
+            st.error(f"Tri thức dự án không hợp lệ: {exc}")
 
     report = st.session_state.report
     if not report:
-        st.info("Chưa có báo cáo. Bấm Generate Report để bắt đầu.")
+        st.info("Chưa có báo cáo. Bấm “Sinh báo cáo” để bắt đầu.")
         return
 
     _render_download_buttons(report, key_prefix="step5")
 
     preview_tab, raw_tab, validation_tab = st.tabs(
-        ["Preview", "Raw Markdown", "Validation"]
+        ["Xem trước", "Mã Markdown", "Kiểm tra"]
     )
     with preview_tab:
         st.markdown(report)
@@ -376,17 +386,17 @@ def _render_download_buttons(report: str, *, key_prefix: str) -> None:
 
 def _render_validation_step() -> None:
     """Run bounded validation/revision after the report has been generated."""
-    st.subheader("Step 6 — Validate Report")
+    st.subheader("Bước 6 — Kiểm tra báo cáo")
     if not st.session_state.report:
-        st.info("Hãy sinh báo cáo trước khi validation.")
+        st.info("Hãy sinh báo cáo trước khi kiểm tra.")
         return
 
     if st.session_state.validation_error:
         st.error(st.session_state.validation_error)
 
-    if st.button("Validate Report", type="primary", use_container_width=True):
+    if st.button("Kiểm tra báo cáo", type="primary", use_container_width=True):
         try:
-            with st.spinner("Đang kiểm tra report và revise nếu cần..."):
+            with st.spinner("Đang kiểm tra báo cáo và chỉnh sửa nếu cần..."):
                 validation_run = validate_and_revise_report(
                     st.session_state.report,
                     st.session_state.project_knowledge,
@@ -396,7 +406,7 @@ def _render_validation_step() -> None:
             st.error(str(exc))
             return
         except ValidationError as exc:
-            message = f"Project Knowledge không hợp lệ: {exc}"
+            message = f"Tri thức dự án không hợp lệ: {exc}"
             st.session_state.validation_error = message
             st.error(message)
             return
@@ -411,7 +421,7 @@ def _render_validation_step() -> None:
 
     _render_validation_result()
     if st.session_state.validation_result:
-        st.markdown("#### Tải báo cáo sau khi xác thực")
+        st.markdown("#### Tải báo cáo sau khi kiểm tra")
         _render_download_buttons(st.session_state.report, key_prefix="step6")
 
 
@@ -419,19 +429,31 @@ def _render_validation_result() -> None:
     """Display the Pydantic validation result in the Validation tab/step."""
     validation = st.session_state.validation_result
     if not validation:
-        st.info("Chưa chạy validation.")
+        st.info("Chưa chạy kiểm tra.")
         return
 
     if validation.get("valid"):
-        st.success("Valid — không phát hiện issue.")
+        st.success("Hợp lệ — không phát hiện vấn đề.")
     else:
-        st.error("Invalid — report còn issue cần xem xét.")
+        st.error("Chưa hợp lệ — báo cáo còn vấn đề cần xem xét.")
 
-    st.write(f"Revision attempts: {st.session_state.revision_count}")
+    st.write(f"Số lần chỉnh sửa tự động: {st.session_state.revision_count}")
     issues = validation.get("issues", [])
     if issues:
-        st.dataframe(issues, use_container_width=True, hide_index=True)
-    with st.expander("Validation JSON", expanded=False):
+        st.dataframe(
+            [
+                {
+                    "Nội dung": issue.get("claim", ""),
+                    "Lý do": issue.get("reason", ""),
+                    "Mức độ": _SEVERITY_LABELS.get(issue.get("severity"), issue.get("severity")),
+                    "Tệp nguồn": issue.get("source_file") or "",
+                }
+                for issue in issues
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+    with st.expander("Kết quả kiểm tra (JSON)", expanded=False):
         st.json(validation)
 
 
@@ -444,14 +466,14 @@ def _save_edited_knowledge(edited_json: str) -> None:
         st.error(f"JSON không hợp lệ: {exc}")
         return
     except ValidationError as exc:
-        st.error(f"Project Knowledge không đúng schema: {exc}")
+        st.error(f"Tri thức dự án không đúng cấu trúc: {exc}")
         return
 
     st.session_state.project_knowledge = knowledge.model_dump(mode="json")
     st.session_state.report = None
     st.session_state.validation_result = None
     st.session_state.knowledge_version += 1
-    st.success("Project Knowledge đã được validate và lưu.")
+    st.success("Tri thức dự án đã được kiểm tra và lưu.")
     st.rerun()
 
 

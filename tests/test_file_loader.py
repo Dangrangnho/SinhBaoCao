@@ -128,7 +128,7 @@ def test_load_zip_rejects_path_traversal_and_absolute_entries() -> None:
     skipped = [result for result in results if result["status"] == "skipped"]
     assert [result["filename"] for result in loaded] == ["project.zip::safe/main.py"]
     assert len(skipped) == 2
-    assert all("unsafe path" in result["error"] for result in skipped)
+    assert all("không an toàn" in result["error"] for result in skipped)
 
 
 def test_load_zip_enforces_extracted_size_limit() -> None:

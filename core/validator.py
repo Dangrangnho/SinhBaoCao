@@ -136,7 +136,7 @@ class ReportValidator:
         except LLMClientError as exc:
             raise ValidatorError(str(exc)) from exc
         except Exception as exc:
-            raise ValidatorError(f"Không thể chạy LLM validator: {exc}") from exc
+            raise ValidatorError(f"Không thể chạy bước kiểm tra bằng LLM: {exc}") from exc
 
     def validate(
         self,
@@ -159,10 +159,10 @@ class ReportValidator:
                 logger.warning("LLM validator unavailable; using deterministic checks only.")
                 issues.append(
                     ValidationIssue(
-                        claim="LLM validator",
+                        claim="Kiểm tra bằng LLM",
                         reason=(
-                            "Không chạy được LLM validator, chỉ áp dụng kiểm tra "
-                            f"deterministic: {exc}"
+                            "Không chạy được bước kiểm tra bằng LLM, chỉ áp dụng kiểm tra "
+                            f"theo quy tắc: {exc}"
                         ),
                         severity="medium",
                     )
@@ -200,9 +200,9 @@ class ReportValidator:
         except LLMClientError as exc:
             raise ValidatorError(str(exc)) from exc
         except Exception as exc:
-            raise ValidatorError(f"Không thể revise report: {exc}") from exc
+            raise ValidatorError(f"Không thể chỉnh sửa báo cáo: {exc}") from exc
         if not isinstance(revised, str) or not revised.strip():
-            raise ValidatorError("LLM trả về revised report rỗng.")
+            raise ValidatorError("LLM trả về bản chỉnh sửa rỗng.")
         return revised.strip()
 
     def validate_and_revise(
@@ -226,18 +226,18 @@ class ReportValidator:
             except ValidatorError as exc:
                 logger.warning("report revision failed; keeping the current report.")
                 failure_issue = ValidationIssue(
-                    claim="Revision report",
-                    reason=f"Không revise được report, giữ nguyên bản hiện tại: {exc}",
+                    claim="Chỉnh sửa báo cáo",
+                    reason=f"Không chỉnh sửa được báo cáo, giữ nguyên bản hiện tại: {exc}",
                     severity="medium",
                 )
                 result = _result_from_issues([*result.issues, failure_issue])
                 break
             if not _revision_is_allowed(current_report, revised, knowledge):
                 guard_issue = ValidationIssue(
-                    claim="Revision report",
+                    claim="Chỉnh sửa báo cáo",
                     reason=(
-                        "Bản revise bị từ chối vì thay đổi cấu trúc 5 chương hoặc thêm "
-                        "claim công nghệ/module/feature/số liệu không có trong Knowledge."
+                        "Bản chỉnh sửa bị từ chối vì thay đổi cấu trúc 5 chương hoặc thêm "
+                        "công nghệ/module/chức năng/số liệu không có trong tri thức dự án."
                     ),
                     severity="high",
                 )
@@ -299,7 +299,7 @@ def _check_technologies(report: str, knowledge: ProjectKnowledge) -> list[Valida
                 issues.append(
                     ValidationIssue(
                         claim=candidate,
-                        reason="Công nghệ được nhắc đến không tồn tại trong Project Knowledge.",
+                        reason="Công nghệ được nhắc đến không có trong tri thức dự án.",
                         severity="high",
                     )
                 )
@@ -327,7 +327,7 @@ def _check_features(report: str, knowledge: ProjectKnowledge) -> list[Validation
                 issues.append(
                     ValidationIssue(
                         claim=candidate,
-                        reason="Feature trong report không có trong Project Knowledge.",
+                        reason="Chức năng nêu trong báo cáo không có trong tri thức dự án.",
                         severity="high",
                     )
                 )
@@ -352,7 +352,7 @@ def _check_modules(report: str, knowledge: ProjectKnowledge) -> list[ValidationI
                 issues.append(
                     ValidationIssue(
                         claim=candidate,
-                        reason="Module được nhắc đến không tồn tại trong Project Knowledge.",
+                        reason="Module được nhắc đến không có trong tri thức dự án.",
                         severity="high",
                     )
                 )
@@ -381,7 +381,7 @@ def _check_source_references(report: str, knowledge: ProjectKnowledge) -> list[V
                 issues.append(
                     ValidationIssue(
                         claim=f"[source: {name}]",
-                        reason="Tham chiếu source không tồn tại trong Project Knowledge.",
+                        reason="Tệp nguồn được trích dẫn không có trong tri thức dự án.",
                         severity="high",
                     )
                 )
@@ -402,7 +402,7 @@ def _check_unsupported_metrics(
             issues.append(
                 ValidationIssue(
                     claim=stripped,
-                    reason="Số liệu hoặc kết quả định lượng không có source/evidence.",
+                    reason="Số liệu hoặc kết quả định lượng không có nguồn/bằng chứng.",
                     severity="high",
                 )
             )
@@ -547,7 +547,7 @@ def _parse_validation_payload(raw: Any) -> ValidationResult:
     if isinstance(raw, ValidationResult):
         return raw
     if not isinstance(raw, Mapping):
-        raise TypeError("Validation response phải là JSON object.")
+        raise TypeError("Kết quả kiểm tra từ LLM phải là một JSON object.")
     issues: list[dict[str, Any]] = []
     for item in raw.get("issues", []) or []:
         if not isinstance(item, Mapping):

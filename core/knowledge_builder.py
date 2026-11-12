@@ -99,10 +99,10 @@ class KnowledgeBuilder:
             )
         except ValidationError as exc:
             raise KnowledgeBuildError(
-                f"Project Knowledge không đúng schema: {exc}"
+                f"Tri thức dự án không đúng cấu trúc: {exc}"
             ) from exc
         except Exception as exc:
-            raise KnowledgeBuildError(f"Không thể xây dựng Project Knowledge: {exc}") from exc
+            raise KnowledgeBuildError(f"Không thể tổng hợp tri thức dự án: {exc}") from exc
 
         knowledge = _apply_evidence_boundary(
             candidate,
@@ -333,7 +333,7 @@ def _prepare_knowledge_payload(
     elif isinstance(raw_payload, Mapping):
         payload = dict(raw_payload)
     else:
-        raise TypeError("Project Knowledge phải là một JSON object.")
+        raise TypeError("Tri thức dự án phải là một JSON object.")
 
     payload["project_title"] = project_title.strip() or str(payload.get("project_title", ""))
     payload["subject_name"] = subject_name.strip() or str(payload.get("subject_name", ""))
