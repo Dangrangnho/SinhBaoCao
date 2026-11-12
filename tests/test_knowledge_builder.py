@@ -76,3 +76,19 @@ def test_knowledge_builder_filters_unknown_reduce_values() -> None:
     assert result.stats.technologies_detected == 1
     assert result.stats.modules_detected == 1
     assert result.stats.features_detected == 1
+
+
+def test_conflicting_configuration_values_are_kept_per_file() -> None:
+    from core.knowledge_builder import _merge_configurations
+    from models.project_schema import ChunkAnalysis
+
+    merged = _merge_configurations(
+        [
+            ChunkAnalysis(filename="a.py", chunk_index=0, important_configs={"PORT": 8000}),
+            ChunkAnalysis(filename="b.py", chunk_index=0, important_configs={"PORT": 8080}),
+            ChunkAnalysis(filename="c.py", chunk_index=0, important_configs={"PORT": 8000}),
+        ]
+    )
+
+    merged.pop("file_details", None)
+    assert merged == {"PORT": 8000, "PORT [b.py]": 8080}

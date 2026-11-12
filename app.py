@@ -11,7 +11,11 @@ from pydantic import ValidationError
 from core.pipeline import PipelineError, analyze_project
 from core.exporter import build_report_filename, docx_bytes, markdown_bytes, pdf_bytes
 from core.report_generator import ReportGenerationError, generate_report
-from core.validator import ValidatorError, validate_and_revise_report
+from core.validator import (
+    ValidatorError,
+    find_features_without_evidence,
+    validate_and_revise_report,
+)
 from models.project_schema import ProjectKnowledge
 from utils.logging_config import configure_logging
 
@@ -109,15 +113,16 @@ def _render_file_upload() -> None:
         help="File sẽ được đọc và xử lý cục bộ trước khi gửi từng chunk tới LLM.",
     )
 
-    if uploaded:
-        st.session_state.uploaded_files = [
-            {
-                "filename": file.name,
-                "content": file.getvalue(),
-                "size": len(file.getvalue()),
-            }
-            for file in uploaded
-        ]
+    # The keyed uploader keeps its files across reruns, so an empty list means the
+    # user removed every file and the stored copies must be cleared as well.
+    st.session_state.uploaded_files = [
+        {
+            "filename": file.name,
+            "content": file.getvalue(),
+            "size": file.size,
+        }
+        for file in (uploaded or [])
+    ]
 
     files = st.session_state.uploaded_files
     if not files:
@@ -170,14 +175,14 @@ def _run_analysis() -> None:
             progress_callback=update_progress,
         )
     except PipelineError as exc:
-        if exc.file_results:
-            st.session_state.file_results = exc.file_results
-        if exc.analysis_errors:
-            st.session_state.analysis_errors = exc.analysis_errors
+        _clear_analysis_state()
+        st.session_state.file_results = exc.file_results
+        st.session_state.analysis_errors = exc.analysis_errors
         st.session_state.analysis_error = str(exc)
         status.error(str(exc))
         return
     except Exception:
+        _clear_analysis_state()
         message = "Đã xảy ra lỗi không xác định trong quá trình phân tích."
         st.session_state.analysis_error = message
         status.error(message)
@@ -196,6 +201,20 @@ def _run_analysis() -> None:
     st.session_state.knowledge_version += 1
     status.success("Analysis completed.")
     progress.progress(1.0)
+
+
+def _clear_analysis_state() -> None:
+    """Drop results of the previous run so they are not shown next to a new error."""
+    st.session_state.file_results = []
+    st.session_state.analysis_errors = []
+    st.session_state.chunk_analysis = []
+    st.session_state.project_knowledge = None
+    st.session_state.analysis_stats = {}
+    st.session_state.report = None
+    st.session_state.validation_result = None
+    st.session_state.revision_count = 0
+    st.session_state.validation_error = None
+    st.session_state.knowledge_version += 1
 
 
 def _render_analysis_results() -> None:
@@ -254,6 +273,13 @@ def _render_knowledge_review() -> None:
 
     st.write("Thông tin do hệ thống tổng hợp:")
     st.json(knowledge.model_dump(mode="json"))
+
+    unsupported_features = find_features_without_evidence(knowledge)
+    if unsupported_features:
+        st.warning(
+            "Các feature sau chưa được evidence nào nhắc tới, nên kiểm tra lại "
+            "trước khi sinh báo cáo: " + ", ".join(unsupported_features)
+        )
 
     editor_key = f"knowledge_editor_{st.session_state.knowledge_version}"
     edited_json = st.text_area(

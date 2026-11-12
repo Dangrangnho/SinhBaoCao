@@ -98,6 +98,13 @@ def analyze_project(
     chunks = chunk_documents(loadable_files)
     if not chunks:
         raise PipelineError("Không tạo được chunk từ các file hợp lệ.", file_results=file_results)
+    if len(chunks) > settings.max_chunks:
+        raise PipelineError(
+            f"Project tạo ra {len(chunks)} chunk, vượt giới hạn MAX_CHUNKS="
+            f"{settings.max_chunks}. Hãy loại bớt file không cần thiết hoặc tăng "
+            "CHUNK_SIZE/MAX_CHUNKS.",
+            file_results=file_results,
+        )
 
     try:
         client = llm_client or LLMClient(settings=settings)

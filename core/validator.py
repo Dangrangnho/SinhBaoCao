@@ -14,11 +14,13 @@ from config import Settings, get_settings
 from core.report_generator import REPORT_HEADINGS
 from llm.llm_client import LLMClient, LLMClientError
 from models.project_schema import Evidence, ProjectKnowledge, ValidationIssue, ValidationResult
+from utils.text_utils import NOT_ENOUGH_DATA
 
 
-NOT_ENOUGH_DATA = "Không đủ dữ liệu để xác định."
 _VALIDATE_PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "validate_report.txt"
 _REVISE_PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "revise_report.txt"
+# Technologies and features are only checked on explicit label lines such as
+# "Công nghệ: A, B"; free prose is left to the LLM validator.
 _TECH_LABEL_RE = re.compile(
     r"^\s*(?:[-*•]\s*)?(?:\*\*)?(?:công nghệ|technology|technologies|framework|thư viện|library)"
     r"(?:\s+sử dụng|\s+chính)?(?:\*\*)?\s*:\s*(.+)$",
@@ -29,6 +31,7 @@ _FEATURE_LABEL_RE = re.compile(
     r"(?:\s+chính)?(?:\*\*)?\s*:\s*(.+)$",
     re.IGNORECASE,
 )
+_SOURCE_TAG_RE = re.compile(r"\[source:\s*([^\]]*)\]", re.IGNORECASE)
 _MODULE_RE = re.compile(
     r"\b(?:[Mm]odule|[Mm]ô-đun)\s+([A-Z][A-Za-z0-9_+#.\-]*(?:\s+[A-Z][A-Za-z0-9_+#.\-]*){0,2}\s+Module)\b"
 )
@@ -109,7 +112,8 @@ class ReportValidator:
         issues.extend(_check_technologies(report, knowledge))
         issues.extend(_check_features(report, knowledge))
         issues.extend(_check_modules(report, knowledge))
-        issues.extend(_check_unsupported_metrics(report))
+        issues.extend(_check_source_references(report, knowledge))
+        issues.extend(_check_unsupported_metrics(report, knowledge))
         result = _result_from_issues(issues)
         logger.info("validation completed: valid=%s issues=%s", result.valid, len(result.issues))
         return result
@@ -141,11 +145,28 @@ class ReportValidator:
         *,
         include_llm: bool = True,
     ) -> ValidationResult:
-        """Combine deterministic and LLM issues into one Pydantic result."""
+        """Combine deterministic and LLM issues into one Pydantic result.
+
+        If the LLM validator is unavailable, the deterministic result is still
+        returned together with a medium issue saying the LLM check was skipped.
+        """
         code_result = self.validate_code(report, project_knowledge)
         issues = list(code_result.issues)
         if include_llm:
-            issues.extend(self.validate_llm(report, project_knowledge).issues)
+            try:
+                issues.extend(self.validate_llm(report, project_knowledge).issues)
+            except ValidatorError as exc:
+                logger.warning("LLM validator unavailable; using deterministic checks only.")
+                issues.append(
+                    ValidationIssue(
+                        claim="LLM validator",
+                        reason=(
+                            "Không chạy được LLM validator, chỉ áp dụng kiểm tra "
+                            f"deterministic: {exc}"
+                        ),
+                        severity="medium",
+                    )
+                )
         result = _result_from_issues(issues)
         logger.info("validation completed: valid=%s issues=%s", result.valid, len(result.issues))
         return result
@@ -200,7 +221,17 @@ class ReportValidator:
 
         while _has_high_issue(result) and revision_count < limit:
             revision_count += 1
-            revised = self.revise_report(current_report, result.issues, knowledge)
+            try:
+                revised = self.revise_report(current_report, result.issues, knowledge)
+            except ValidatorError as exc:
+                logger.warning("report revision failed; keeping the current report.")
+                failure_issue = ValidationIssue(
+                    claim="Revision report",
+                    reason=f"Không revise được report, giữ nguyên bản hiện tại: {exc}",
+                    severity="medium",
+                )
+                result = _result_from_issues([*result.issues, failure_issue])
+                break
             if not _revision_is_allowed(current_report, revised, knowledge):
                 guard_issue = ValidationIssue(
                     claim="Revision report",
@@ -276,18 +307,13 @@ def _check_technologies(report: str, knowledge: ProjectKnowledge) -> list[Valida
 
 
 def _check_features(report: str, knowledge: ProjectKnowledge) -> list[ValidationIssue]:
-    issues: list[ValidationIssue] = []
-    all_ev = _all_evidence(knowledge)
-    if knowledge.features and not all_ev:
-        for feature in knowledge.features:
-            issues.append(
-                ValidationIssue(
-                    claim=feature,
-                    reason="Feature không có evidence tương ứng trong Project Knowledge.",
-                    severity="high",
-                )
-            )
+    """Check features named in the report against Project Knowledge.
 
+    Whether a knowledge feature has evidence is a property of the knowledge, not
+    of the report, so it is reported by :func:`find_features_without_evidence`
+    for the review step instead of here (a report revision cannot fix it).
+    """
+    issues: list[ValidationIssue] = []
     known_features = {feature.casefold() for feature in knowledge.features}
     for line in report.splitlines():
         if line.lstrip().startswith("#"):
@@ -333,15 +359,44 @@ def _check_modules(report: str, knowledge: ProjectKnowledge) -> list[ValidationI
     return _deduplicate_issues(issues)
 
 
-def _check_unsupported_metrics(report: str) -> list[ValidationIssue]:
+def find_features_without_evidence(knowledge: ProjectKnowledge) -> list[str]:
+    """Return knowledge features that no evidence claim mentions.
+
+    This is a review hint for the Project Knowledge step, not a report issue.
+    """
+    evidence_text = " ".join(
+        evidence.claim.casefold() for evidence in _all_evidence(knowledge)
+    )
+    return [
+        feature for feature in knowledge.features if feature.casefold() not in evidence_text
+    ]
+
+
+def _check_source_references(report: str, knowledge: ProjectKnowledge) -> list[ValidationIssue]:
+    """Flag ``[source: ...]`` tags that point to files outside Project Knowledge."""
     issues: list[ValidationIssue] = []
-    in_code_block = False
-    for line in report.splitlines():
+    for line in _prose_lines(report):
+        for name in _source_tag_names(line):
+            if not _source_is_known(name, knowledge.source_files):
+                issues.append(
+                    ValidationIssue(
+                        claim=f"[source: {name}]",
+                        reason="Tham chiếu source không tồn tại trong Project Knowledge.",
+                        severity="high",
+                    )
+                )
+    return _deduplicate_issues(issues)
+
+
+def _check_unsupported_metrics(
+    report: str,
+    knowledge: ProjectKnowledge,
+) -> list[ValidationIssue]:
+    issues: list[ValidationIssue] = []
+    for line in _prose_lines(report):
         stripped = line.strip()
-        if stripped.startswith("```"):
-            in_code_block = not in_code_block
-            continue
-        if in_code_block or stripped.startswith("#") or "[source:" in line.casefold():
+        names = _source_tag_names(line)
+        if names and all(_source_is_known(name, knowledge.source_files) for name in names):
             continue
         if _METRIC_CONTEXT_RE.search(line) and _METRIC_RE.search(line):
             issues.append(
@@ -364,6 +419,39 @@ def _extract_technology_candidates(line: str) -> list[str]:
         for candidate in _split_candidates(suffix)
         if len(candidate.split()) <= 4 and candidate.casefold() not in _STOP_WORDS
     ]
+
+
+def _prose_lines(report: str) -> list[str]:
+    """Return report lines outside fenced code blocks and headings."""
+    lines: list[str] = []
+    in_code_block = False
+    for line in report.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_code_block = not in_code_block
+            continue
+        if not in_code_block and not stripped.startswith("#"):
+            lines.append(line)
+    return lines
+
+
+def _source_tag_names(line: str) -> list[str]:
+    names: list[str] = []
+    for match in _SOURCE_TAG_RE.finditer(line):
+        names.extend(
+            name.strip(" `'\"") for name in re.split(r"[,;]", match.group(1))
+        )
+    return [name for name in names if name]
+
+
+def _source_is_known(name: str, source_files: Sequence[str]) -> bool:
+    """Accept exact names and path suffixes such as ``main.py`` for ``x.zip::src/main.py``."""
+    key = name.replace("\\", "/").casefold()
+    for source_file in source_files:
+        known = source_file.replace("\\", "/").casefold()
+        if known == key or known.endswith("/" + key) or known.endswith("::" + key):
+            return True
+    return False
 
 
 def _extract_label_candidates(line: str, pattern: re.Pattern[str]) -> list[str]:
@@ -488,6 +576,7 @@ def _code_issues_for_guard(report: str, knowledge: ProjectKnowledge) -> list[Val
     issues.extend(_check_technologies(report, knowledge))
     issues.extend(_check_features(report, knowledge))
     issues.extend(_check_modules(report, knowledge))
-    issues.extend(_check_unsupported_metrics(report))
+    issues.extend(_check_source_references(report, knowledge))
+    issues.extend(_check_unsupported_metrics(report, knowledge))
     return _deduplicate_issues(issues)
 

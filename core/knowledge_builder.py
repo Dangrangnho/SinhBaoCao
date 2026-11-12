@@ -12,11 +12,7 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from config import get_settings
-from core.analyzer import (
-    NOT_ENOUGH_DATA,
-    AnalysisStats,
-    build_analysis_stats,
-)
+from core.analyzer import AnalysisStats, build_analysis_stats
 from models.project_schema import (
     Architecture,
     ChunkAnalysis,
@@ -24,6 +20,7 @@ from models.project_schema import (
     Module,
     ProjectKnowledge,
 )
+from utils.text_utils import NOT_ENOUGH_DATA, as_string_list, unique_strings
 
 
 _PROMPT_PATH = (
@@ -140,15 +137,15 @@ def normalize_analyses(
         normalized.append(
             analysis.model_copy(
                 update={
-                    "technologies": _unique_strings(analysis.technologies),
-                    "modules": _unique_strings(analysis.modules),
-                    "classes": _unique_strings(analysis.classes),
-                    "functions": _unique_strings(analysis.functions),
-                    "inputs": _unique_strings(analysis.inputs),
-                    "outputs": _unique_strings(analysis.outputs),
-                    "features": _unique_strings(analysis.features),
-                    "data_flow": _unique_strings(analysis.data_flow),
-                    "limitations": _unique_strings(analysis.limitations),
+                    "technologies": unique_strings(analysis.technologies),
+                    "modules": unique_strings(analysis.modules),
+                    "classes": unique_strings(analysis.classes),
+                    "functions": unique_strings(analysis.functions),
+                    "inputs": unique_strings(analysis.inputs),
+                    "outputs": unique_strings(analysis.outputs),
+                    "features": unique_strings(analysis.features),
+                    "data_flow": unique_strings(analysis.data_flow),
+                    "limitations": unique_strings(analysis.limitations),
                     "evidence": _unique_evidence(analysis.evidence),
                 }
             )
@@ -166,38 +163,38 @@ def _apply_evidence_boundary(
     """Keep generated collections bounded by normalized analysis facts."""
     known_technologies = {
         value.casefold()
-        for value in _unique_strings(
+        for value in unique_strings(
             value for analysis in analyses for value in analysis.technologies
         )
     }
     known_modules = {
         value.casefold()
-        for value in _unique_strings(value for analysis in analyses for value in analysis.modules)
+        for value in unique_strings(value for analysis in analyses for value in analysis.modules)
     }
     known_features = {
         value.casefold()
-        for value in _unique_strings(value for analysis in analyses for value in analysis.features)
+        for value in unique_strings(value for analysis in analyses for value in analysis.features)
     }
 
     technologies = _select_known(candidate.technologies, known_technologies)
     if not technologies:
-        technologies = _unique_strings(
+        technologies = unique_strings(
             value for analysis in analyses for value in analysis.technologies
         )
 
     features = _select_known(candidate.features, known_features)
     if not features:
-        features = _unique_strings(value for analysis in analyses for value in analysis.features)
+        features = unique_strings(value for analysis in analyses for value in analysis.features)
 
     modules = _merge_modules(analyses, known_modules, candidate.modules)
     evidence = _unique_evidence(
         evidence for analysis in analyses for evidence in analysis.evidence
     )
     source_files = sorted({analysis.filename for analysis in analyses})
-    data_flow = _unique_strings(value for analysis in analyses for value in analysis.data_flow)
-    inputs = _unique_strings(value for analysis in analyses for value in analysis.inputs)
-    outputs = _unique_strings(value for analysis in analyses for value in analysis.outputs)
-    limitations = _unique_strings(value for analysis in analyses for value in analysis.limitations)
+    data_flow = unique_strings(value for analysis in analyses for value in analysis.data_flow)
+    inputs = unique_strings(value for analysis in analyses for value in analysis.inputs)
+    outputs = unique_strings(value for analysis in analyses for value in analysis.outputs)
+    limitations = unique_strings(value for analysis in analyses for value in analysis.limitations)
     configuration = _merge_configurations(analyses)
 
     architecture = candidate.architecture
@@ -272,7 +269,7 @@ def _merge_modules(
                 merged[key] = existing.model_copy(
                     update={
                         "description": updated_desc,
-                        "source_files": _unique_strings(
+                        "source_files": unique_strings(
                             [*existing.source_files, analysis.filename]
                         ),
                         "evidence": _unique_evidence(
@@ -284,10 +281,20 @@ def _merge_modules(
 
 
 def _merge_configurations(analyses: Sequence[ChunkAnalysis]) -> dict[str, Any]:
+    """Merge configs without silently overwriting conflicting values.
+
+    The first value keeps the plain key. A different value for the same key from
+    another file is kept under ``"<key> [<filename>]"`` so no source is lost.
+    """
     result: dict[str, Any] = {}
     file_details: dict[str, dict[str, Any]] = {}
     for analysis in analyses:
-        result.update(analysis.important_configs)
+        for key, value in analysis.important_configs.items():
+            if key not in result:
+                result[key] = value
+            elif result[key] != value:
+                scoped_key = f"{key} [{analysis.filename}]"
+                result.setdefault(scoped_key, value)
         entry = file_details.setdefault(
             analysis.filename,
             {
@@ -304,10 +311,10 @@ def _merge_configurations(analyses: Sequence[ChunkAnalysis]) -> dict[str, Any]:
             and entry["purpose"] == NOT_ENOUGH_DATA
         ):
             entry["purpose"] = analysis.purpose
-        entry["classes"] = _unique_strings([*entry["classes"], *analysis.classes])
-        entry["functions"] = _unique_strings([*entry["functions"], *analysis.functions])
-        entry["inputs"] = _unique_strings([*entry["inputs"], *analysis.inputs])
-        entry["outputs"] = _unique_strings([*entry["outputs"], *analysis.outputs])
+        entry["classes"] = unique_strings([*entry["classes"], *analysis.classes])
+        entry["functions"] = unique_strings([*entry["functions"], *analysis.functions])
+        entry["inputs"] = unique_strings([*entry["inputs"], *analysis.inputs])
+        entry["outputs"] = unique_strings([*entry["outputs"], *analysis.outputs])
     if file_details:
         result["file_details"] = file_details
     return result
@@ -339,7 +346,7 @@ def _prepare_knowledge_payload(
         "outputs",
         "limitations",
     ):
-        payload[field_name] = _as_string_list(payload.get(field_name, []))
+        payload[field_name] = as_string_list(payload.get(field_name, []))
     if not isinstance(payload.get("configuration"), Mapping):
         payload["configuration"] = {}
     payload["architecture"] = _prepare_architecture(payload.get("architecture", {}))
@@ -353,7 +360,7 @@ def _prepare_architecture(value: Any) -> dict[str, Any]:
         return {"description": NOT_ENOUGH_DATA, "components": [], "evidence": []}
     return {
         "description": str(value.get("description") or NOT_ENOUGH_DATA),
-        "components": _as_string_list(value.get("components", [])),
+        "components": as_string_list(value.get("components", [])),
         "evidence": _prepare_evidence(value.get("evidence", []), set()),
     }
 
@@ -371,7 +378,7 @@ def _prepare_modules(value: Any, source_files: set[str]) -> list[dict[str, Any]]
                 "description": str(item.get("description") or ""),
                 "source_files": [
                     value
-                    for value in _as_string_list(item.get("source_files", []))
+                    for value in as_string_list(item.get("source_files", []))
                     if value in source_files
                 ],
                 "evidence": _prepare_evidence(item.get("evidence", []), source_files),
@@ -421,26 +428,6 @@ def _render_prompt(
         .replace("{{ADDITIONAL_NOTES}}", additional_notes)
         .replace("{{ANALYSES_JSON}}", analyses_json)
     )
-
-
-def _as_string_list(value: Any) -> list[str]:
-    if isinstance(value, str):
-        value = [value]
-    if not isinstance(value, (list, tuple, set)):
-        return []
-    return [str(item).strip() for item in value if str(item).strip()]
-
-
-def _unique_strings(values: Any) -> list[str]:
-    result: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        text = str(value).strip()
-        key = text.casefold()
-        if text and key not in seen:
-            seen.add(key)
-            result.append(text)
-    return result
 
 
 def _select_known(values: Sequence[str], known: set[str]) -> list[str]:
